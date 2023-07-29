@@ -9,8 +9,7 @@ from nerf.gui import NeRFGUI
 
 # torch.autograd.set_detect_anomaly(True)
 
-if __name__ == '__main__':
-
+def parse_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--text', default=None, help="text prompt")
     parser.add_argument('--negative', default='', type=str, help="negative text prompt")
@@ -94,7 +93,15 @@ if __name__ == '__main__':
     parser.add_argument('--light_phi', type=float, default=0, help="default GUI light direction in [0, 360), azimuth")
     parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
 
-    opt = parser.parse_args()
+    opt = parser.parse_args(args)
+
+    return opt
+
+
+if __name__ == '__main__':
+
+    opt = parse_args()
+
 
     if opt.O:
         opt.fp16 = True
