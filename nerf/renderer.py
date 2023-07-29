@@ -14,69 +14,7 @@ import mcubes
 import raymarching
 from meshutils import decimate_mesh, clean_mesh, poisson_mesh_reconstruction
 from .utils import custom_meshgrid, safe_normalize
-
-
-def sample_pdf(bins, weights, n_samples, det=False):
-    # This implementation is from NeRF
-    # bins: [B, T], old_z_vals
-    # weights: [B, T - 1], bin weights.
-    # return: [B, n_samples], new_z_vals
-
-    # Get pdf
-    weights = weights + 1e-5  # prevent nans
-    pdf = weights / torch.sum(weights, -1, keepdim=True)
-    cdf = torch.cumsum(pdf, -1)
-    cdf = torch.cat([torch.zeros_like(cdf[..., :1]), cdf], -1)
-    # Take uniform samples
-    if det:
-        u = torch.linspace(0. + 0.5 / n_samples, 1. - 0.5 / n_samples, steps=n_samples).to(weights.device)
-        u = u.expand(list(cdf.shape[:-1]) + [n_samples])
-    else:
-        u = torch.rand(list(cdf.shape[:-1]) + [n_samples]).to(weights.device)
-
-    # Invert CDF
-    u = u.contiguous()
-    inds = torch.searchsorted(cdf, u, right=True)
-    below = torch.max(torch.zeros_like(inds - 1), inds - 1)
-    above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)
-    inds_g = torch.stack([below, above], -1)  # (B, n_samples, 2)
-
-    matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]
-    cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
-    bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
-
-    denom = (cdf_g[..., 1] - cdf_g[..., 0])
-    denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
-    t = (u - cdf_g[..., 0]) / denom
-    samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])
-
-    return samples
-
-@torch.cuda.amp.autocast(enabled=False)
-def near_far_from_bound(rays_o, rays_d, bound, type='cube', min_near=0.05):
-    # rays: [B, N, 3], [B, N, 3]
-    # bound: int, radius for ball or half-edge-length for cube
-    # return near [B, N, 1], far [B, N, 1]
-
-    radius = rays_o.norm(dim=-1, keepdim=True)
-
-    if type == 'sphere':
-        near = radius - bound # [B, N, 1]
-        far = radius + bound
-
-    elif type == 'cube':
-        tmin = (-bound - rays_o) / (rays_d + 1e-15) # [B, N, 3]
-        tmax = (bound - rays_o) / (rays_d + 1e-15)
-        near = torch.where(tmin < tmax, tmin, tmax).max(dim=-1, keepdim=True)[0]
-        far = torch.where(tmin > tmax, tmin, tmax).min(dim=-1, keepdim=True)[0]
-        # if far < near, means no intersection, set both near and far to inf (1e9 here)
-        mask = far < near
-        near[mask] = 1e9
-        far[mask] = 1e9
-        # restrict near to a minimal value
-        near = torch.clamp(near, min=min_near)
-
-    return near, far
+from volume_renderer import VolumeRenderer
 
 
 def plot_pointcloud(pc, color=None):
@@ -262,98 +200,16 @@ def laplacian_smooth_loss(verts, faces):
     return loss
 
 
-class VolumeRenderer(nn.Module):
-    def run_core_weight_only(self, rays_o, rays_d, z_vals):
-        raise NotImplementedError()
-    def run_core(
-            self, 
-            rays_o,
-            rays_d, 
-            z_vals, 
-            dirs, 
-            light_d, 
-            ambient_ratio=1.0,
-            shading='albedo',
-            bg_color=None,
-            prefix=None
-        ):
-        raise NotImplementedError()
-    def run(self, rays_o, rays_d, light_d=None, ambient_ratio=1.0, shading='albedo', bg_color=None, perturb=False, **kwargs):
-        # rays_o, rays_d: [B, N, 3], assumes B == 1
-        # bg_color: [BN, 3] in range [0, 1]
-        # return: image: [B, N, 3], depth: [B, N]
-
-        prefix = rays_o.shape[:-1]
-        rays_o = rays_o.contiguous().view(-1, 3)
-        rays_d = rays_d.contiguous().view(-1, 3)
-
-        N = rays_o.shape[0] # N = B * N, in fact
-        device = rays_o.device
-
-        # choose aabb
-        aabb = self.aabb_train if self.training else self.aabb_infer
-
-        # sample steps
-        # nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, aabb, self.min_near)
-        # nears.unsqueeze_(-1)
-        # fars.unsqueeze_(-1)
-        nears, fars = near_far_from_bound(rays_o, rays_d, self.bound, type='sphere', min_near=self.min_near)
-
-        # random sample light_d if not provided
-        if light_d is None:
-            # gaussian noise around the ray origin, so the light always face the view dir (avoid dark face)
-            light_d = (rays_o[0] + torch.randn(3, device=device, dtype=torch.float))
-            light_d = safe_normalize(light_d)
-
-        #print(f'nears = {nears.min().item()} ~ {nears.max().item()}, fars = {fars.min().item()} ~ {fars.max().item()}')
-
-        z_vals = torch.linspace(0.0, 1.0, self.opt.num_steps, device=device).unsqueeze(0) # [1, T]
-        z_vals = z_vals.expand((N, self.opt.num_steps)) # [N, T]
-        z_vals = nears + (fars - nears) * z_vals # [N, T], in [nears, fars]
-
-        # perturb z_vals
-        sample_dist = (fars - nears) / self.opt.num_steps
-        if perturb:
-            z_vals = z_vals + (torch.rand(z_vals.shape, device=device) - 0.5) * sample_dist
-            #z_vals = z_vals.clamp(nears, fars) # avoid out of bounds xyzs.
-
-        # generate xyzs
-        xyzs = rays_o.unsqueeze(-2) + rays_d.unsqueeze(-2) * z_vals.unsqueeze(-1) # [N, 1, 3] * [N, T, 1] -> [N, T, 3]
-        xyzs = torch.min(torch.max(xyzs, aabb[:3]), aabb[3:]) # a manual clip.
-
-        #plot_pointcloud(xyzs.reshape(-1, 3).detach().cpu().numpy())
-
-        # query SDF and RGB
-        density_outputs = self.density(xyzs.reshape(-1, 3))
-
-        #sigmas = density_outputs['sigma'].view(N, self.opt.num_steps) # [N, T]
-        for k, v in density_outputs.items():
-            density_outputs[k] = v.view(N, self.opt.num_steps, -1)
-
-        # upsample z_vals (nerf-like)
-        if self.opt.upsample_steps > 0:
-            with torch.no_grad():
-
-                weights = self.run_core_weight_only(rays_o, rays_d, z_vals) # [N, T]
-                deltas = z_vals[..., 1:] - z_vals[..., :-1] # [N, T-1]
-                deltas = torch.cat([deltas, sample_dist * torch.ones_like(deltas[..., :1])], dim=-1)
-
-                # sample new z_vals
-                z_vals_mid = (z_vals[..., :-1] + 0.5 * deltas[..., :-1]) # [N, T-1]
-                new_z_vals = sample_pdf(z_vals_mid, weights[:, 1:-1], self.opt.upsample_steps, det=not self.training).detach() # [N, t]
-
-            # re-order
-            z_vals = torch.cat([z_vals, new_z_vals], dim=1) # [N, T+t]
-            z_vals, _ = torch.sort(z_vals, dim=1)
-
-        dirs = rays_d.view(-1, 1, 3).expand_as(xyzs)
-        results = self.run_core(rays_o, rays_d, z_vals, dirs, light_d, ambient_ratio, shading, bg_color, prefix=prefix)
-        return results
 
 
 class NeRFRenderer(VolumeRenderer):
     def __init__(self, opt):
-        super().__init__()
+        super().__init__(
+            opt.bound,
+            opt.min_near,
+            opt.num_steps,
+            opt.upsample_steps
+        )
 
         self.opt = opt
         self.bound = opt.bound
@@ -365,12 +221,6 @@ class NeRFRenderer(VolumeRenderer):
         self.min_near = opt.min_near
         self.density_thresh = opt.density_thresh
 
-        # prepare aabb with a 6D tensor (xmin, ymin, zmin, xmax, ymax, zmax)
-        # NOTE: aabb (can be rectangular) is only used to generate points, we still rely on bound (always cubic) to calculate density grid and hashing.
-        aabb_train = torch.FloatTensor([-opt.bound, -opt.bound, -opt.bound, opt.bound, opt.bound, opt.bound])
-        aabb_infer = aabb_train.clone()
-        self.register_buffer('aabb_train', aabb_train)
-        self.register_buffer('aabb_infer', aabb_infer)
 
         self.glctx = None
 
@@ -644,11 +494,9 @@ class NeRFRenderer(VolumeRenderer):
 
         _export(v, f)
 
-    def run_core_weight_only(self, rays_o, rays_d, z_vals):
+    def run_core_weight_only(self, rays_o, rays_d, z_vals, sample_dist):
         N = rays_o.shape[0]
 
-        nears, fars = near_far_from_bound(rays_o, rays_d, self.bound, type='sphere', min_near=self.min_near)
-        sample_dist = (fars - nears) / self.opt.num_steps
         aabb = self.aabb_train if self.training else self.aabb_infer
         xyzs = rays_o.unsqueeze(-2) + rays_d.unsqueeze(-2) * z_vals.unsqueeze(-1) # [N, 1, 3] * [N, T, 1] -> [N, T, 3]
         xyzs = torch.min(torch.max(xyzs, aabb[:3]), aabb[3:]) # a manual clip.
@@ -670,8 +518,9 @@ class NeRFRenderer(VolumeRenderer):
             rays_o,
             rays_d, 
             z_vals, 
-            dirs, 
-            light_d, 
+            dirs,
+            sample_dist,
+            light_d=None, 
             ambient_ratio=1.0,
             shading='albedo',
             bg_color=None,
@@ -693,8 +542,6 @@ class NeRFRenderer(VolumeRenderer):
 
         sigmas, rgbs, normals = self(xyzs.reshape(-1, 3), dirs.reshape(-1, 3), light_d, ratio=ambient_ratio, shading=shading)
 
-        nears, fars = near_far_from_bound(rays_o, rays_d, self.bound, type='sphere', min_near=self.min_near)
-        sample_dist = (fars - nears) / self.opt.num_steps
         deltas = z_vals[..., 1:] - z_vals[..., :-1] # [N, T+t-1]
         deltas = torch.cat([deltas, sample_dist * torch.ones_like(deltas[..., :1])], dim=-1)
         sigmas = sigmas.view(*xyzs.shape[:-1], -1)
