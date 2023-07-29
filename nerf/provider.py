@@ -50,13 +50,24 @@ def visualize_poses(poses, dirs, size=0.1):
     trimesh.Scene(objects).show()
 
 def get_view_direction(thetas, phis, overhead, front):
+    """
+    Numbers the batch accordingly:
+
+    front = 0         [0, front)
+    side (left) = 1   [front, 180)
+    back = 2          [180, 180+front)
+    side (right) = 3  [180+front, 360)
+    top = 4                               [0, overhead]
+    bottom = 5                            [180-overhead, 180]
+
+    Input:
+        thetas: [B,]
+        phis: [B,] - polar coordinates of the camera on the sphere
+        overhead: [0, pi/2] - threshold for considering whether the camera is looking from the top
+        front: [0, pi] - threshold for considering whether the camera is looking from the front
+    
+    """
     #                   phis [B,];          thetas: [B,]
-    # front = 0         [0, front)
-    # side (left) = 1   [front, 180)
-    # back = 2          [180, 180+front)
-    # side (right) = 3  [180+front, 360)
-    # top = 4                               [0, overhead]
-    # bottom = 5                            [180-overhead, 180]
     res = torch.zeros(thetas.shape[0], dtype=torch.long)
     # first determine by phis
     res[(phis < front / 2) | (phis >= 2 * np.pi - front / 2)] = 0
