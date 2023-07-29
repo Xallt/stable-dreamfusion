@@ -400,10 +400,6 @@ class NeuSRendererOld:
 class NeuSRenderer(VolumeRenderer):
     def __init__(
             self,
-            nerf_outside_config,
-            sdf_network_config,
-            variance_network_config,
-            rendering_network_config,
             n_samples,
             n_importance,
             n_outside,
@@ -416,10 +412,6 @@ class NeuSRenderer(VolumeRenderer):
             num_steps=n_samples,
             upsample_steps=n_importance
         )
-        self.nerf_outside = NeRF(**nerf_outside_config)
-        self.sdf_network = SDFNetwork(**sdf_network_config)
-        self.deviation_network = SingleVarianceNetwork(**variance_network_config)
-        self.color_network = RenderingNetwork(**rendering_network_config)
         self.n_samples = n_samples
         self.n_importance = n_importance
         self.n_outside = n_outside
@@ -438,7 +430,7 @@ class NeuSRenderer(VolumeRenderer):
         batch_size, n_samples = z_vals.shape
 
         pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]
-        sdf = self.sdf_network.sdf(pts.reshape(-1, 3)).reshape(batch_size, self.n_samples)
+        sdf = self.sdf(pts.reshape(-1, 3)).reshape(batch_size, self.n_samples)
         device = rays_o.device
         pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]  # n_rays, n_samples, 3
         radius = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
@@ -480,6 +472,9 @@ class NeuSRenderer(VolumeRenderer):
 
         return weights
 
+    def forward(self, pts, dirs):
+        raise NotImplementedError()
+
     def run_core(
             self,
             rays_o,
@@ -508,14 +503,12 @@ class NeuSRenderer(VolumeRenderer):
         pts = pts.reshape(-1, 3)
         dirs = dirs.reshape(-1, 3)
 
-        sdf_nn_output = self.sdf_network(pts)
-        sdf = sdf_nn_output[:, :1]
-        feature_vector = sdf_nn_output[:, 1:]
+        network_output = self(pts, dirs)
+        sdf = network_output['sdf']
+        gradients = network_output['gradients']
+        sampled_color = network_output['color'].reshape(batch_size, n_samples, 3)
 
-        gradients = self.sdf_network.gradient(pts).squeeze()
-        sampled_color = self.color_network(pts, gradients, dirs, feature_vector).reshape(batch_size, n_samples, 3)
-
-        inv_s = self.deviation_network(torch.zeros([1, 3], device=device))[:, :1].clip(1e-6, 1e6)           # Single parameter
+        inv_s = self.deviation(torch.zeros([1, 3], device=device))[:, :1].clip(1e-6, 1e6)           # Single parameter
         inv_s = inv_s.expand(batch_size * n_samples, 1)
 
         true_cos = (dirs * gradients).sum(-1, keepdim=True)

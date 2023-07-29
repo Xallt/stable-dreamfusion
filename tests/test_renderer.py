@@ -27,8 +27,7 @@ class TestRendererMethods(unittest.TestCase):
 
     def test_neus_renderer(self):
         from pyhocon import ConfigFactory
-        from neus.fields import SDFNetwork, RenderingNetwork, NeRF, SingleVarianceNetwork
-        from neus.renderer import NeuSRenderer
+        from neus.network import NeuSNetwork
         parser = argparse.ArgumentParser()
         parser.add_argument('--conf', type=str, default='./confs/base.conf')
         parser.add_argument('--mode', type=str, default='train')
@@ -55,7 +54,7 @@ class TestRendererMethods(unittest.TestCase):
 
         device = 'cuda:0'
 
-        renderer = NeuSRenderer(
+        renderer = NeuSNetwork(
             conf['model.nerf'],
             conf['model.sdf_network'],
             conf['model.variance_network'],
