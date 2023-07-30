@@ -456,10 +456,23 @@ class Trainer(object):
         pred_rgb = outputs['image'].reshape(B, H, W, 3)
         pred_depth = outputs['depth'].reshape(B, H, W)
 
+        # Visualize denoisings from guidance
+        if hasattr(self.guidance, 'eval_step'):
+            # text embeddings
+            if self.opt.dir_text:
+                dirs = data['dir'] # [B,]
+                text_z = self.text_z[dirs]
+            else:
+                text_z = self.text_z
+            pred_denoised = self.guidance.eval_step(pred_rgb.permute(0, 3, 1, 2).contiguous(), text_z).permute(0, 2, 3, 1)
+        else:
+            pred_denoised = None
+
+
         # dummy 
         loss = torch.zeros([1], device=pred_rgb.device, dtype=pred_rgb.dtype)
 
-        return pred_rgb, pred_depth, loss
+        return pred_rgb, pred_depth, loss, pred_denoised
 
     def test_step(self, data, bg_color=None, perturb=False):  
         rays_o = data['rays_o'] # [B, N, 3]
@@ -816,7 +829,7 @@ class Trainer(object):
                 self.local_step += 1
 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth, loss = self.eval_step(data)
+                    preds, preds_depth, loss, pred_denoised = self.eval_step(data)
 
                 # all_gather/reduce the statistics (NCCL only support all_*)
                 if self.world_size > 1:
@@ -830,6 +843,11 @@ class Trainer(object):
                     preds_depth_list = [torch.zeros_like(preds_depth).to(self.device) for _ in range(self.world_size)] # [[B, ...], [B, ...], ...]
                     dist.all_gather(preds_depth_list, preds_depth)
                     preds_depth = torch.cat(preds_depth_list, dim=0)
+
+                    if pred_denoised is not None:
+                        pred_denoised_list = [torch.zeros_like(pred_denoised).to(self.device) for _ in range(self.world_size)]
+                        dist.all_gather(pred_denoised_list, pred_denoised)
+                        pred_denoised = torch.cat(pred_denoised_list, dim=0)
                 
                 loss_val = loss.item()
                 total_loss += loss_val
@@ -840,6 +858,7 @@ class Trainer(object):
                     # save image
                     save_path = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_rgb.png')
                     save_path_depth = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_depth.png')
+                    save_path_denoised = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_denoised.png')
 
                     #self.log(f"==> Saving validation image to {save_path}")
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -853,6 +872,10 @@ class Trainer(object):
                     
                     cv2.imwrite(save_path, cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
                     cv2.imwrite(save_path_depth, pred_depth)
+                    if pred_denoised is not None:
+                        pred_denoised = pred_denoised[0].detach().cpu().numpy()
+                        pred_denoised = (pred_denoised * 255).astype(np.uint8)
+                        cv2.imwrite(save_path_denoised, cv2.cvtColor(pred_denoised, cv2.COLOR_RGB2BGR))
 
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                     pbar.update(loader.batch_size)

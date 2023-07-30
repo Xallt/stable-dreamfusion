@@ -20,6 +20,21 @@ def seed_everything(seed):
     #torch.backends.cudnn.deterministic = True
     #torch.backends.cudnn.benchmark = True
 
+def remove_noise(scheduler, x, t, noise):
+    # Based on https://github.com/huggingface/diffusers/blob/v0.19.3/src/diffusers/schedulers/scheduling_ddim.py#L470
+    alphas_cumprod = scheduler.alphas_cumprod.to(device=x.device, dtype=x.dtype)
+    sqrt_alpha_prod = torch.sqrt(alphas_cumprod[t]).flatten()
+    while len(sqrt_alpha_prod.shape) < len(x.shape):
+        sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+    sqrt_one_minus_alpha_prod = torch.sqrt(1 - alphas_cumprod[t]).flatten()
+    while len(sqrt_one_minus_alpha_prod.shape) < len(x.shape):
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+    
+    x_denoised = (x - sqrt_one_minus_alpha_prod * noise) / sqrt_alpha_prod
+    return x_denoised
+
+
+
 @dataclass
 class UNet2DConditionOutput:
     sample: torch.HalfTensor # Not sure how to check what unet_traced.pt contains, and user wants. HalfTensor or FloatTensor
@@ -81,6 +96,7 @@ class StableDiffusion(nn.Module):
         self.unet = pipe.unet
 
         self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler", torch_dtype=precision_t)
+        self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
 
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
@@ -108,6 +124,20 @@ class StableDiffusion(nn.Module):
         return text_embeddings
 
 
+    def eval_step(self, pred_rgb, text_embeddings, guidance_scale=100):
+        pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+        latents = self.encode_imgs(pred_rgb_512)
+        t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            noise = torch.randn_like(latents)
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
+            latent_model_input = torch.cat([latents_noisy] * 2)
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+        noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        latents_denoised = remove_noise(self.scheduler, latents_noisy, t, noise_pred)
+        pred_denoised = self.decode_latents(latents_denoised)
+        return pred_denoised
     def train_step(self, text_embeddings, pred_rgb, guidance_scale=100, as_latent=False, grad_clip=None):
         
         if as_latent:
@@ -144,7 +174,8 @@ class StableDiffusion(nn.Module):
             grad = grad.clamp(-grad_clip, grad_clip)
         grad = torch.nan_to_num(grad)
 
-        loss = (grad.detach() * latents_noisy).sum()
+        w = (1 - self.alphas[t])
+        loss = (grad.detach() * latents).sum() * w
 
         return loss 
 
