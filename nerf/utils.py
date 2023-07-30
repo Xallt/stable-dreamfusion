@@ -387,14 +387,21 @@ class Trainer(object):
         else:
             text_z = self.text_z
         
+        loss_dict = {}
+        loss = 0
+        
         # encode pred_rgb to latents
-        loss = self.guidance.train_step(text_z, pred_rgb, as_latent=as_latent)
+        guidance_loss = self.guidance.train_step(text_z, pred_rgb, as_latent=as_latent)
+
+        loss += guidance_loss
+        loss_dict['guidance_loss'] = guidance_loss
 
         # regularizations
         if not self.opt.dmtet:
             if self.opt.lambda_opacity > 0:
                 loss_opacity = (outputs['weights_sum'] ** 2).mean()
                 loss = loss + self.opt.lambda_opacity * loss_opacity
+                loss_dict['loss_opacity'] = loss_opacity
 
             if self.opt.lambda_entropy > 0:
 
@@ -405,18 +412,22 @@ class Trainer(object):
                 lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
                         
                 loss = loss + lambda_entropy * loss_entropy
+                loss_dict['loss_entropy'] = loss_entropy
 
             if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
                 loss_orient = outputs['loss_orient']
                 loss = loss + self.opt.lambda_orient * loss_orient
+                loss_dict['loss_orient'] = loss_orient
         else:
             if self.opt.lambda_normal > 0:
                 loss = loss + self.opt.lambda_normal * outputs['normal_loss']
+                loss_dict['normal_loss'] = outputs['normal_loss']
             
             if self.opt.lambda_lap > 0:
                 loss = loss + self.opt.lambda_lap * outputs['lap_loss']
+                loss_dict['lap_loss'] = outputs['lap_loss']
 
-        return pred_rgb, pred_depth, loss
+        return pred_rgb, pred_depth, loss, loss_dict
     
     def post_train_step(self):
 
@@ -600,7 +611,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                pred_rgbs, pred_depths, loss = self.train_step(data)
+                pred_rgbs, pred_depths, loss, loss_dict = self.train_step(data)
          
             self.scaler.scale(loss).backward()
             self.post_train_step()
@@ -724,7 +735,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                pred_rgbs, pred_depths, loss = self.train_step(data)
+                pred_rgbs, pred_depths, loss, loss_dict = self.train_step(data)
          
             self.scaler.scale(loss).backward()
             self.post_train_step()
@@ -745,6 +756,8 @@ class Trainer(object):
                 if self.use_tensorboardX:
                     self.writer.add_scalar("train/loss", loss_val, self.global_step)
                     self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.global_step)
+                    for k, v in loss_dict.items():
+                        self.writer.add_scalar(f"train/{k}", v.item(), self.global_step)
 
                 if self.scheduler_update_every_step:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f}), lr={self.optimizer.param_groups[0]['lr']:.6f}")
