@@ -85,6 +85,10 @@ class VolumeRenderer(torch.nn.Module):
         aabb_infer = aabb_train.clone()
         self.register_buffer('aabb_train', aabb_train)
         self.register_buffer('aabb_infer', aabb_infer)
+
+        # Support for cuda / taichi off by default
+        self.cuda_ray = False
+        self.taichi_ray = False
     def run_core_weight_only(self, rays_o, rays_d, z_vals, sample_dist):
         raise NotImplementedError()
     def run_core(
