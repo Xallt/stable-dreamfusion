@@ -418,6 +418,10 @@ class Trainer(object):
                 loss_orient = outputs['loss_orient']
                 loss = loss + self.opt.lambda_orient * loss_orient
                 loss_dict['loss_orient'] = loss_orient
+            if self.opt.network == 'neus':
+                loss_eikonal = outputs['gradient_error']
+                loss = loss + self.opt.lambda_eikonal * loss_eikonal
+                loss_dict['loss_eikonal'] = loss_eikonal
         else:
             if self.opt.lambda_normal > 0:
                 loss = loss + self.opt.lambda_normal * outputs['normal_loss']
