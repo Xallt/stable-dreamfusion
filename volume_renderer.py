@@ -187,3 +187,5 @@ class VolumeRenderer(torch.nn.Module):
             prefix=prefix
         )
         return results
+    def render(self, rays_o, rays_d, mvp, h, w, staged=False, max_ray_batch=4096, **kwargs):
+        return self.run(rays_o, rays_d, **kwargs)
