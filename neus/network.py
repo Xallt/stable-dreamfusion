@@ -49,3 +49,12 @@ class NeuSNetwork(NeuSRenderer):
             'color': color,
             'gradients': gradients
         }
+
+    def get_params(self, lr):
+        params = [
+            {'params': self.nerf_outside.parameters(), 'lr': lr},
+            {'params': self.sdf_network.parameters(), 'lr': lr},
+            {'params': self.deviation_network.parameters(), 'lr': lr},
+            {'params': self.color_network.parameters(), 'lr': lr},
+        ]
+        return params
