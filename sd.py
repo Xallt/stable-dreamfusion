@@ -168,14 +168,15 @@ class StableDiffusion(nn.Module):
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
         noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-        grad = noise_pred - noise
-
+        w = (1 - self.alphas[t])
+        grad = (noise_pred - noise) * w[:, None, None, None]
         if grad_clip is not None:
             grad = grad.clamp(-grad_clip, grad_clip)
         grad = torch.nan_to_num(grad)
 
-        w = (1 - self.alphas[t])
-        loss = (grad.detach() * latents).sum() * w
+        target = (latents - grad).detach()
+
+        loss = 0.5 * F.mse_loss(latents, target, reduction='sum') / latents.shape[0]
 
         return loss 
 
