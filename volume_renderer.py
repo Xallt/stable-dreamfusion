@@ -1,5 +1,6 @@
 import torch
 from nerf.utils import custom_meshgrid, safe_normalize
+from collections import defaultdict
 
 @torch.cuda.amp.autocast(enabled=False)
 def near_far_from_bound(rays_o, rays_d, bound, type='cube', min_near=0.05):
@@ -188,4 +189,29 @@ class VolumeRenderer(torch.nn.Module):
         )
         return results
     def render(self, rays_o, rays_d, mvp, h, w, staged=False, max_ray_batch=4096, **kwargs):
-        return self.run(rays_o, rays_d, **kwargs)
+        if max_ray_batch is None:
+            return self.run(rays_o, rays_d, **kwargs)
+        else:
+            B, N = rays_o.shape[:2]
+            device = rays_o.device
+
+            results = defaultdict(list) # Will automatically create a new list for each key
+            for b in range(B):
+                head = 0
+                while head < N:
+                    tail = min(head + max_ray_batch, N)
+                    results_ = self.run(rays_o[b:b+1, head:tail], rays_d[b:b+1, head:tail], **kwargs)
+
+                    for key in results_:
+                        results[key].append(results_[key])
+
+                    head += max_ray_batch
+
+            # Concatenate all the results along the second dimension
+            for key in results:
+                if results[key][0].ndim < 2:
+                    results[key] = torch.stack(results[key], dim=-1)
+                else:
+                    results[key] = torch.cat(results[key], dim=1)
+
+            return results
