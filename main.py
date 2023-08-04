@@ -18,8 +18,9 @@ def parse_args(args=None):
     parser.add_argument('--test', action='store_true', help="test mode")
     parser.add_argument('--eval_interval', type=int, default=1, help="evaluate on the valid set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
-    parser.add_argument('--guidance', type=str, default='stable-diffusion', help='choose from [stable-diffusion, clip]')
+    parser.add_argument('--guidance', type=str, default='stable-diffusion', help='choose from [stable-diffusion, clip]', choices=['stable-diffusion', 'clip'])
     parser.add_argument('--seed', default=None)
+    parser.add_argument('--network', type=str, default='nerf', help='type of network to use', choices=['nerf', 'neus'])
 
     parser.add_argument('--save_mesh', action='store_true', help="export an obj mesh with texture")
     parser.add_argument('--mcubes_resolution', type=int, default=256, help="mcubes resolution for extracting mesh")
@@ -82,6 +83,7 @@ def parse_args(args=None):
     parser.add_argument('--lambda_tv', type=float, default=0, help="loss scale for total variation")
     parser.add_argument('--lambda_normal', type=float, default=0, help="loss scale for mesh normal smoothness")
     parser.add_argument('--lambda_lap', type=float, default=0.2, help="loss scale for mesh laplacian")
+    parser.add_argument('--lambda_eikonal', type=float, default=1e-2, help="loss scale for eikonal loss")
 
     ### GUI options
     parser.add_argument('--gui', action='store_true', help="start a GUI")
@@ -121,11 +123,7 @@ if __name__ == '__main__':
         opt.t_range = [0.02, 0.50]
         opt.fovy_range = [20, 60]
 
-    if opt.backbone == 'vanilla':
-        from nerf.network import NeRFNetwork
-    elif opt.backbone == 'grid':
-        from nerf.network_grid import NeRFNetwork
-    elif opt.backbone == 'grid_taichi':
+    if opt.backbone == 'grid_taichi':
         opt.cuda_ray = False
         opt.taichi_ray = True
         import taichi as ti
@@ -135,18 +133,41 @@ if __name__ == '__main__':
         if taichi_half2_opt:
             taichi_init_args["half2_vectorization"] = True
         ti.init(**taichi_init_args)
-    else:
-        raise NotImplementedError(f'--backbone {opt.backbone} is not implemented!')
 
     print(opt)
-
     if opt.seed is not None:
         seed_everything(int(opt.seed))
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = NeRFNetwork(opt).to(device)
+    if opt.network == 'nerf':
+        if opt.backbone == 'vanilla':
+            from nerf.network import NeRFNetwork
+        elif opt.backbone == 'grid':
+            from nerf.network_grid import NeRFNetwork
+        elif opt.backbone == 'grid_taichi':
+            from nerf.network_grid_taichi import NeRFNetwork
+        else:
+            raise NotImplementedError(f'--backbone {opt.backbone} is not implemented!')
+        model = NeRFNetwork(opt).to(device)
+    elif opt.network == 'neus':
+        from neus.network import NeuSNetwork
+        from pyhocon import ConfigFactory
 
+        # TODO: Make the initialization configurable
+        conf_path = '/home/dmitry/grn/Text-to-3D/stable-dreamfusion/womask.conf'
+        f = open(conf_path)
+        conf_text = f.read()
+        conf_text = conf_text.replace('CASE_NAME', 'womask')
+        f.close()
+
+        conf = ConfigFactory.parse_string(conf_text)
+        model = NeuSNetwork(
+            conf['model.nerf'],
+            conf['model.sdf_network'],
+            conf['model.variance_network'],
+            conf['model.rendering_network'],
+            **conf['model.neus_renderer']
+        ).to(device)
     if opt.dmtet and opt.init_ckpt != '':
         # load pretrained weights to init dmtet
         state_dict = torch.load(opt.init_ckpt, map_location=device)
