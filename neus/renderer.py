@@ -567,21 +567,28 @@ class NeuSRenderer(VolumeRenderer):
         depth = depth.view(*prefix)
         weights_sum = weights_sum.reshape(*prefix)
 
-        return {
-            'image': color,
-            'depth': depth,
-            'sdf': sdf,
-            'pts': pts,
-            'dists': dists,
-            'gradients': gradients.reshape(batch_size, n_samples, 3),
-            's_val': 1.0 / inv_s,
-            'mid_z_vals': mid_z_vals,
-            'weights': weights,
-            'weights_sum': weights_sum,
-            'cdf': c.reshape(batch_size, n_samples),
-            'gradient_error': gradient_error,
-            'inside_sphere': inside_sphere
-        }
+        if self.training:
+            return {
+                'image': color,
+                'depth': depth,
+                'sdf': sdf,
+                'pts': pts,
+                'dists': dists,
+                'gradients': gradients.reshape(batch_size, n_samples, 3),
+                's_val': 1.0 / inv_s,
+                'mid_z_vals': mid_z_vals,
+                'weights': weights,
+                'weights_sum': weights_sum,
+                'cdf': c.reshape(batch_size, n_samples),
+                'gradient_error': gradient_error,
+                'inside_sphere': inside_sphere
+            }
+        else:
+            return {
+                'image': color,
+                'depth': depth,
+                'weights_sum': weights_sum,
+            }
 
     def extract_geometry(self, bound_min, bound_max, resolution, threshold=0.0):
         return extract_geometry(bound_min,
