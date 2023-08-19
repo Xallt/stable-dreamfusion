@@ -33,23 +33,23 @@ class NeuSNetwork(NeuSRenderer):
     def deviation(self, pts):
         return self.deviation_network(pts)
 
-    def gradient(self, pts):
-        return self.sdf_network.gradient(pts)
+    def gradient(self, pts, create_graph=True):
+        return self.sdf_network.gradient(pts, create_graph=create_graph)
     def color(self, pts, gradients, dirs, feature_vector):
         return self.color_network(pts, gradients, dirs, feature_vector)
 
-    def forward(self, pts, dirs):
+    def forward(self, pts, dirs, create_graph=True):
         sdf_nn_output = self.sdf_network(pts)
         sdf = sdf_nn_output[:, :1]
         feature_vector = sdf_nn_output[:, 1:]
-        gradients = self.gradient(pts).squeeze()
+        gradients = self.gradient(pts, create_graph=create_graph).squeeze()
         color = self.color(pts, gradients, dirs, feature_vector)
         return {
             'sdf': sdf,
             'color': color,
+            'feature_vector': feature_vector,
             'gradients': gradients
         }
-
     def get_params(self, lr):
         params = [
             {'params': self.nerf_outside.parameters(), 'lr': lr},

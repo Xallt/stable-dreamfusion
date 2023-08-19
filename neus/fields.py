@@ -93,7 +93,7 @@ class SDFNetwork(nn.Module):
     def sdf_hidden_appearance(self, x):
         return self.forward(x)
 
-    def gradient(self, x):
+    def gradient(self, x, create_graph=True):
         x.requires_grad_(True)
         y = self.sdf(x)
         d_output = torch.ones_like(y, requires_grad=False, device=y.device)
@@ -101,9 +101,9 @@ class SDFNetwork(nn.Module):
             outputs=y,
             inputs=x,
             grad_outputs=d_output,
-            create_graph=True,
-            retain_graph=True,
+            create_graph=create_graph,
             only_inputs=True)[0]
+
         return gradients.unsqueeze(1)
 
 
