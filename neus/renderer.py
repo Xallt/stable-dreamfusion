@@ -503,13 +503,20 @@ class NeuSRenderer(VolumeRenderer):
         pts = pts.reshape(-1, 3)
         dirs = dirs.reshape(-1, 3)
 
-        network_output = self(pts, dirs)
+        network_output = self(pts, dirs, create_graph=self.training)
         sdf = network_output['sdf']
         gradients = network_output['gradients']
         sampled_color = network_output['color'].reshape(batch_size, n_samples, 3)
 
         inv_s = self.deviation(torch.zeros([1, 3], device=device))[:, :1].clip(1e-6, 1e6)           # Single parameter
         inv_s = inv_s.expand(batch_size * n_samples, 1)
+        # In order for `gradients` to be computed during eval, torch.no_grad can not be used
+        # So this hack is required to drop all ".grad"s of the tensors
+        if not self.training:
+            sdf = sdf.detach()
+            gradients = gradients.detach()
+            sampled_color = sampled_color.detach()
+            inv_s = inv_s.detach()
 
         true_cos = (dirs * gradients).sum(-1, keepdim=True)
 
