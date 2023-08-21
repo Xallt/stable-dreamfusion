@@ -93,18 +93,23 @@ class SDFNetwork(nn.Module):
     def sdf_hidden_appearance(self, x):
         return self.forward(x)
 
-    def gradient(self, x, create_graph=True):
+    def gradient(self, x, create_graph=True, return_output=False):
         x.requires_grad_(True)
-        y = self.sdf(x)
-        d_output = torch.ones_like(y, requires_grad=False, device=y.device)
+        y = self.forward(x)
+        sdf = y[:, :1]
+        d_output = torch.ones_like(sdf, requires_grad=False, device=y.device)
         gradients = torch.autograd.grad(
-            outputs=y,
+            outputs=sdf,
             inputs=x,
             grad_outputs=d_output,
             create_graph=create_graph,
             only_inputs=True)[0]
 
-        return gradients.unsqueeze(1)
+        if not return_output:
+            return gradients.unsqueeze(1)
+        else:
+            return gradients.unsqueeze(1), y
+
 
 
 # This implementation is borrowed from IDR: https://github.com/lioryariv/idr

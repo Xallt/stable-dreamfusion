@@ -39,10 +39,10 @@ class NeuSNetwork(NeuSRenderer):
         return self.color_network(pts, gradients, dirs, feature_vector)
 
     def forward(self, pts, dirs, create_graph=True):
-        sdf_nn_output = self.sdf_network(pts)
+        gradients, sdf_nn_output = self.sdf_network.gradient(pts, create_graph=create_graph, return_output=True)
+        gradients = gradients.squeeze()
         sdf = sdf_nn_output[:, :1]
         feature_vector = sdf_nn_output[:, 1:]
-        gradients = self.gradient(pts, create_graph=create_graph).squeeze()
         color = self.color(pts, gradients, dirs, feature_vector)
         return {
             'sdf': sdf,
