@@ -362,7 +362,7 @@ class NeRFRenderer(VolumeRenderer):
         # mesh = trimesh.Trimesh(vertices, triangles, process=False) # important, process=True leads to seg fault...
         # mesh.export(os.path.join(path, f'mesh.ply'))
 
-        def _export(v, f, h0=2048, w0=2048, ssaa=1, name=''):
+        def _export_mesh(v, f, h0=2048, w0=2048, ssaa=1, name=''):
             # v, f: torch Tensor
             device = v.device
             v_np = v.cpu().numpy() # [N, 3]
@@ -491,8 +491,7 @@ class NeRFRenderer(VolumeRenderer):
                 fp.write(f'illum 1 \n')
                 fp.write(f'Ns 0.000000 \n')
                 fp.write(f'map_Kd {name}albedo.png \n')
-
-        _export(v, f)
+        _export_mesh(v, f)
 
     def run_core_weight_only(self, rays_o, rays_d, z_vals, sample_dist):
         N = rays_o.shape[0]
