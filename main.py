@@ -5,6 +5,7 @@ import sys
 from nerf.provider import NeRFDataset
 from nerf.utils import *
 
+from nerf.gui import NeRFGUI
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')I
 
