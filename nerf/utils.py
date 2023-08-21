@@ -568,28 +568,31 @@ class Trainer(object):
             all_preds = []
             all_preds_depth = []
 
-        with torch.no_grad():
 
-            for i, data in enumerate(loader):
-                
-                with torch.cuda.amp.autocast(enabled=self.fp16):
+        for i, data in enumerate(loader):
+            
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                if self.opt.network == 'neus':
                     preds, preds_depth, _ = self.test_step(data)
-
-                pred = preds[0].detach().cpu().numpy()
-                pred = (pred * 255).astype(np.uint8)
-
-                pred_depth = preds_depth[0].detach().cpu().numpy()
-                pred_depth = (pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
-                pred_depth = (pred_depth * 255).astype(np.uint8)
-
-                if write_video:
-                    all_preds.append(pred)
-                    all_preds_depth.append(pred_depth)
                 else:
-                    cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_rgb.png'), cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
-                    cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_depth.png'), pred_depth)
+                    with torch.no_grad():
+                        preds, preds_depth, _ = self.test_step(data)
 
-                pbar.update(loader.batch_size)
+            pred = preds[0].detach().cpu().numpy()
+            pred = (pred * 255).astype(np.uint8)
+
+            pred_depth = preds_depth[0].detach().cpu().numpy()
+            pred_depth = (pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
+            pred_depth = (pred_depth * 255).astype(np.uint8)
+
+            if write_video:
+                all_preds.append(pred)
+                all_preds_depth.append(pred_depth)
+            else:
+                cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_rgb.png'), cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_depth.png'), pred_depth)
+
+            pbar.update(loader.batch_size)
 
         if write_video:
             all_preds = np.stack(all_preds, axis=0)
