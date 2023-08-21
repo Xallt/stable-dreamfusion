@@ -164,6 +164,7 @@ class Trainer(object):
                  device=None, # device to use, usually setting to None is OK. (auto choose device)
                  mute=False, # whether to mute all print
                  fp16=False, # amp optimize level
+                 dummy=False, # dummy run
                  eval_interval=1, # eval once every $ epoch
                  max_keep_ckpt=2, # max num of saved ckpts in disk
                  workspace='workspace', # workspace to save logs & ckpts
@@ -177,6 +178,7 @@ class Trainer(object):
         
         self.argv = argv
         self.name = name
+        self.dummy = dummy
         self.opt = opt
         self.mute = mute
         self.metrics = metrics
@@ -524,11 +526,16 @@ class Trainer(object):
             self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
 
         start_t = time.time()
+        # Evaluation in the beginning to see how the space was initialized
+        self.evaluate_one_epoch(valid_loader)
         
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch
 
             self.train_one_epoch(train_loader, max_epochs)
+
+            if self.dummy:
+                return
 
             if self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
