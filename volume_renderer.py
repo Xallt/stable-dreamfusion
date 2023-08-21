@@ -90,6 +90,8 @@ class VolumeRenderer(torch.nn.Module):
         # Support for cuda / taichi off by default
         self.cuda_ray = False
         self.taichi_ray = False
+
+        self.glctx = None
     def run_core_weight_only(self, rays_o, rays_d, z_vals, sample_dist):
         raise NotImplementedError()
     def run_core(
@@ -105,6 +107,9 @@ class VolumeRenderer(torch.nn.Module):
             bg_color=None,
             prefix=None
         ):
+        raise NotImplementedError()
+
+    def export_mesh(self, path, resolution=None, decimate_target=-1, S=128):
         raise NotImplementedError()
     def run(self, rays_o, rays_d, light_d=None, ambient_ratio=1.0, shading='albedo', bg_color=None, perturb=False, **kwargs):
         # rays_o, rays_d: [B, N, 3], assumes B == 1
