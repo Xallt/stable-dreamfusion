@@ -448,7 +448,7 @@ class NeuSRenderer(VolumeRenderer):
                         val = self.sdf(pts.to(self.aabb_train.device))
                     sdfs[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs)] = val.reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy() # [S, 1] --> [x, y, z]
 
-        vertices, triangles = mcubes.marching_cubes(sdfs, 0)
+        vertices, triangles = mcubes.marching_cubes(-sdfs, 0)
         vertices = vertices / (resolution - 1.0) * 2 - 1
 
         # clean
