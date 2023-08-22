@@ -135,7 +135,7 @@ class RenderingNetwork(nn.Module):
         dims = [d_in + d_feature] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.embedview_fn = None
-        if multires_view > 0:
+        if multires_view > 0 and self.mode != 'basic':
             embedview_fn, input_ch = get_embedder(multires_view)
             self.embedview_fn = embedview_fn
             dims[0] += (input_ch - 3)
@@ -165,6 +165,10 @@ class RenderingNetwork(nn.Module):
             rendering_input = torch.cat([points, normals, feature_vectors], dim=-1)
         elif self.mode == 'no_normal':
             rendering_input = torch.cat([points, view_dirs, feature_vectors], dim=-1)
+        elif self.mode == 'basic':
+            rendering_input = torch.cat([points, feature_vectors], dim=-1)
+        else:
+            raise RuntimeError('Unknown mode: ' + self.mode)
 
         x = rendering_input
 
