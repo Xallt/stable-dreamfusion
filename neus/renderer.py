@@ -427,6 +427,8 @@ class NeuSRenderer(VolumeRenderer):
         raise NotImplementedError()
     def color(self, pts, gradients, dirs, feature_vector):
         raise NotImplementedError()
+    def background_color(self, pts, dirs):
+        raise NotImplementedError()
     def deviation(self, pts):
         raise NotImplementedError()
     # @torch.no_grad()
@@ -681,13 +683,6 @@ class NeuSRenderer(VolumeRenderer):
 
         inv_s = self.deviation(torch.zeros([1, 3], device=device))[:, :1].clip(1e-6, 1e6)           # Single parameter
         inv_s = inv_s.expand(batch_size * n_samples, 1)
-        # In order for `gradients` to be computed during eval, torch.no_grad can not be used
-        # So this hack is required to drop all ".grad"s of the tensors
-        if not self.training:
-            sdf = sdf.detach()
-            gradients = gradients.detach()
-            sampled_color = sampled_color.detach()
-            inv_s = inv_s.detach()
 
         true_cos = (dirs * gradients).sum(-1, keepdim=True)
 
@@ -713,24 +708,17 @@ class NeuSRenderer(VolumeRenderer):
         inside_sphere = (pts_norm < sphere_radius).float().detach()
         relax_inside_sphere = (pts_norm < sphere_radius * 1.2).float().detach()
 
-        # Render with background
-        if background_alpha is not None:
-            if background_alpha == 0.0:
-                alpha = alpha * inside_sphere
-            else:
-                alpha = alpha * inside_sphere + background_alpha[:, :n_samples] * (1.0 - inside_sphere)
-                alpha = torch.cat([alpha, background_alpha[:, n_samples:]], dim=-1)
-                sampled_color = sampled_color * inside_sphere[:, :, None] +\
-                                background_sampled_color[:, :n_samples] * (1.0 - inside_sphere)[:, :, None]
-                sampled_color = torch.cat([sampled_color, background_sampled_color[:, n_samples:]], dim=1)
+        # Enabled for now. Masks out all points outside the sphere
+        alpha = alpha * inside_sphere
 
         weights = alpha * torch.cumprod(torch.cat([torch.ones([batch_size, 1], device=device), 1. - alpha + 1e-7], -1), -1)[:, :-1]
         weights_sum = weights.sum(dim=-1, keepdim=True)
 
         color = (sampled_color * weights[:, :, None]).sum(dim=1)
         depth = (z_vals * weights).sum(dim=1)
-        if bg_color is not None:    # Fixed background, usually black
-            color = color + bg_color * (1.0 - weights_sum)
+        if bg_color is None: 
+            bg_color = self.background_color(rays_o, rays_d)
+        color = color + bg_color * (1.0 - weights_sum)
 
         # Eikonal loss
         gradient_error = (torch.linalg.norm(gradients.reshape(batch_size, n_samples, 3), ord=2,
@@ -758,10 +746,12 @@ class NeuSRenderer(VolumeRenderer):
                 'inside_sphere': inside_sphere
             }
         else:
+            # In order for `gradients` to be computed during eval, torch.no_grad can not be used
+            # So this hack is required to drop all ".grad"s of the tensors
             return {
-                'image': color,
-                'depth': depth,
-                'weights_sum': weights_sum,
+                'image': color.detach(),
+                'depth': depth.detach(),
+                'weights_sum': weights_sum.detach(),
             }
 
     def extract_geometry(self, bound_min, bound_max, resolution, threshold=0.0):

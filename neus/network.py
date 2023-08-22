@@ -22,10 +22,12 @@ class NeuSNetwork(NeuSRenderer):
             up_sample_steps,
             perturb
         )
-        self.nerf_outside = NeRF(**nerf_outside_config)
+
         self.sdf_network = SDFNetwork(**sdf_network_config)
         self.deviation_network = SingleVarianceNetwork(**variance_network_config)
         self.color_network = RenderingNetwork(**rendering_network_config)
+        # Learnable background color
+        self.bg_color = torch.nn.Parameter(torch.zeros(3))
 
     def sdf(self, pts):
         return self.sdf_network.sdf(pts)
@@ -37,6 +39,9 @@ class NeuSNetwork(NeuSRenderer):
         return self.sdf_network.gradient(pts, create_graph=create_graph)
     def color(self, pts, gradients, dirs, feature_vector):
         return self.color_network(pts, gradients, dirs, feature_vector)
+
+    def background_color(self, pts, dirs):
+        return torch.sigmoid(self.bg_color)[None].expand(pts.shape[0], -1)
 
     def forward(self, pts, dirs, create_graph=True):
         gradients, sdf_nn_output = self.sdf_network.gradient(pts, create_graph=create_graph, return_output=True)
@@ -52,9 +57,9 @@ class NeuSNetwork(NeuSRenderer):
         }
     def get_params(self, lr):
         params = [
-            {'params': self.nerf_outside.parameters(), 'lr': lr},
             {'params': self.sdf_network.parameters(), 'lr': lr},
             {'params': self.deviation_network.parameters(), 'lr': lr},
             {'params': self.color_network.parameters(), 'lr': lr},
+            {'params': self.bg_color, 'lr': lr},
         ]
         return params
