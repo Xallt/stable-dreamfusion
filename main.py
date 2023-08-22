@@ -77,7 +77,8 @@ def parse_args(args=None):
     parser.add_argument('--suppress_face', action='store_true', help="also use negative dir text prompt.")
     parser.add_argument('--angle_overhead', type=float, default=30, help="[0, angle_overhead] is the overhead region")
     parser.add_argument('--angle_front', type=float, default=60, help="[0, angle_front] is the front region, [180, 180+angle_front] the back region, otherwise the side region.")
-    parser.add_argument('--t_range', type=float, nargs='*', default=[0.02, 0.98], help="stable diffusion time steps range")
+    parser.add_argument('--t_min', type=float, default=0.02, help="stable diffusion time steps min")
+    parser.add_argument('--t_max', type=float, default=0.98, help="stable diffusion time steps max")
 
     ### regularizations
     parser.add_argument('--lambda_entropy', type=float, default=1e-3, help="loss scale for alpha entropy")
@@ -107,6 +108,7 @@ if __name__ == '__main__':
 
     opt = parse_args()
 
+    opt.t_range = [opt.t_min, opt.t_max]
 
     if opt.O:
         opt.fp16 = True
