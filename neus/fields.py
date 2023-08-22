@@ -34,6 +34,9 @@ class SDFNetwork(nn.Module):
         self.skip_in = skip_in
         self.scale = scale
 
+        if geometric_init:
+            print("Applying NeuS geometric init")
+
         for l in range(0, self.num_layers - 1):
             if l + 1 in self.skip_in:
                 out_dim = dims[l + 1] - dims[0]
@@ -85,7 +88,8 @@ class SDFNetwork(nn.Module):
 
             if l < self.num_layers - 2:
                 x = self.activation(x)
-        return torch.cat([x[:, :1] / self.scale, x[:, 1:]], dim=-1)
+        x[..., 0] = x[..., 0] / self.scale
+        return x
 
     def sdf(self, x):
         return self.forward(x)[:, :1]
