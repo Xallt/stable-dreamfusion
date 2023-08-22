@@ -652,8 +652,9 @@ class NeuSRenderer(VolumeRenderer):
             z_vals,
             dirs,
             bg_color=None,
-            background_alpha=None,
+            background_alpha=0.0,
             background_sampled_color=None,
+            sphere_radius=0.7,
             cos_anneal_ratio=0.0,
             prefix=None,
             **kwargs
@@ -709,16 +710,19 @@ class NeuSRenderer(VolumeRenderer):
         alpha = ((p + 1e-5) / (c + 1e-5)).reshape(batch_size, n_samples).clip(0.0, 1.0)
 
         pts_norm = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=True).reshape(batch_size, n_samples)
-        inside_sphere = (pts_norm < 1.0).float().detach()
-        relax_inside_sphere = (pts_norm < 1.2).float().detach()
+        inside_sphere = (pts_norm < sphere_radius).float().detach()
+        relax_inside_sphere = (pts_norm < sphere_radius * 1.2).float().detach()
 
         # Render with background
         if background_alpha is not None:
-            alpha = alpha * inside_sphere + background_alpha[:, :n_samples] * (1.0 - inside_sphere)
-            alpha = torch.cat([alpha, background_alpha[:, n_samples:]], dim=-1)
-            sampled_color = sampled_color * inside_sphere[:, :, None] +\
-                            background_sampled_color[:, :n_samples] * (1.0 - inside_sphere)[:, :, None]
-            sampled_color = torch.cat([sampled_color, background_sampled_color[:, n_samples:]], dim=1)
+            if background_alpha == 0.0:
+                alpha = alpha * inside_sphere
+            else:
+                alpha = alpha * inside_sphere + background_alpha[:, :n_samples] * (1.0 - inside_sphere)
+                alpha = torch.cat([alpha, background_alpha[:, n_samples:]], dim=-1)
+                sampled_color = sampled_color * inside_sphere[:, :, None] +\
+                                background_sampled_color[:, :n_samples] * (1.0 - inside_sphere)[:, :, None]
+                sampled_color = torch.cat([sampled_color, background_sampled_color[:, n_samples:]], dim=1)
 
         weights = alpha * torch.cumprod(torch.cat([torch.ones([batch_size, 1], device=device), 1. - alpha + 1e-7], -1), -1)[:, :-1]
         weights_sum = weights.sum(dim=-1, keepdim=True)
