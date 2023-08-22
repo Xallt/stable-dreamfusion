@@ -7,7 +7,7 @@ from nerf.utils import *
 
 from nerf.gui import NeRFGUI
 import warnings
-warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')I
+warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
 
 # torch.autograd.set_detect_anomaly(True)
 
