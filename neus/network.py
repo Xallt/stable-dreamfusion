@@ -5,7 +5,6 @@ from .fields import SDFNetwork, RenderingNetwork, NeRF, SingleVarianceNetwork
 class NeuSNetwork(NeuSRenderer):
     def __init__(
             self,
-            nerf_outside_config,
             sdf_network_config,
             variance_network_config,
             rendering_network_config,
@@ -27,7 +26,7 @@ class NeuSNetwork(NeuSRenderer):
         self.deviation_network = SingleVarianceNetwork(**variance_network_config)
         self.color_network = RenderingNetwork(**rendering_network_config)
         # Learnable background color
-        self.bg_color = torch.nn.Parameter(torch.zeros(3))
+        self.bg_color = torch.nn.Parameter(torch.full((3,), -10.0))
 
     def sdf(self, pts):
         return self.sdf_network.sdf(pts)

@@ -167,7 +167,6 @@ if __name__ == '__main__':
 
         conf = ConfigFactory.parse_string(conf_text)
         model = NeuSNetwork(
-            conf['model.nerf'],
             conf['model.sdf_network'],
             conf['model.variance_network'],
             conf['model.rendering_network'],
