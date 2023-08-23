@@ -875,11 +875,10 @@ class Trainer(object):
             if self.local_rank == 0:
 
                 # save image
-                save_path = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_rgb.png')
-                save_path_depth = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_depth.png')
-                save_path_denoised = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_denoised.png')
+                save_path = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}.png')
 
-                #self.log(f"==> Saving validation image to {save_path}")
+                _, axes = plt.subplots(1, 2 + int(pred_denoised is not None), figsize=(15, 5))
+
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
                 pred = preds[0].detach().cpu().numpy()
@@ -889,12 +888,18 @@ class Trainer(object):
                 pred_depth = (pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
                 pred_depth = (pred_depth * 255).astype(np.uint8)
                 
-                cv2.imwrite(save_path, cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
-                cv2.imwrite(save_path_depth, pred_depth)
+                for ax in axes:
+                    ax.axis('off')
+                axes[0].imshow(pred)
+                axes[0].set_title('RGB')
+                axes[1].imshow(pred_depth, cmap='gray')
+                axes[1].set_title('Depth')
                 if pred_denoised is not None:
                     pred_denoised = pred_denoised[0].detach().cpu().numpy()
                     pred_denoised = (pred_denoised * 255).astype(np.uint8)
-                    cv2.imwrite(save_path_denoised, cv2.cvtColor(pred_denoised, cv2.COLOR_RGB2BGR))
+                    axes[2].imshow(pred_denoised)
+                    axes[2].set_title('Denoised')
+                plt.savefig(save_path)
 
                 pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                 pbar.update(loader.batch_size)
