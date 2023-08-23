@@ -791,6 +791,8 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                 pbar.update(loader.batch_size)
+            if self.dummy:
+                return
 
         if self.ema is not None:
             self.ema.update()
