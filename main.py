@@ -182,7 +182,7 @@ if __name__ == '__main__':
 
     print(model)
 
-    if opt.test:
+    if opt.test or opt.save_mesh:
         guidance = None # no need to load guidance model at test
 
         trainer = Trainer(' '.join(sys.argv), 'df', opt, model, guidance, device=device, workspace=opt.workspace, fp16=opt.fp16, use_checkpoint=opt.ckpt, dummy=opt.dummy)
@@ -193,7 +193,8 @@ if __name__ == '__main__':
 
         else:
             test_loader = NeRFDataset(opt, device=device, type='test', H=opt.H, W=opt.W, size=100).dataloader()
-            trainer.test(test_loader)
+            if opt.test:
+                trainer.test(test_loader)
 
             if opt.save_mesh:
                 # a special loader for poisson mesh reconstruction,
