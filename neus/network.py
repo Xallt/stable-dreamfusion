@@ -14,6 +14,14 @@ class BackgroundNetwork(torch.nn.Module):
             num_layers_bg, 
             bias=True
         )
+        # Initialize background color to be black
+        for block in self.bg_net.net:
+            if not isinstance(block, torch.nn.Linear):
+                torch.nn.init.normal_(block.dense.weight, 0.0, 0.02)
+                torch.nn.init.constant_(block.dense.bias, 0.0)
+            else:
+                torch.nn.init.normal_(block.weight, 0.0, 0.02)
+                torch.nn.init.constant_(block.bias, -2.0)
     def forward(self, dirs):
         h = self.encoder_bg(dirs)
         h = self.bg_net(h)
@@ -78,6 +86,6 @@ class NeuSNetwork(NeuSRenderer):
             {'params': self.sdf_network.parameters(), 'lr': lr},
             {'params': self.deviation_network.parameters(), 'lr': lr},
             {'params': self.color_network.parameters(), 'lr': lr},
-            {'params': self.background_network.parameters(), 'lr': lr},
+            {'params': self.background_network.parameters(), 'lr': lr * 0.1},
         ]
         return params
