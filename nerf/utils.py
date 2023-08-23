@@ -405,7 +405,7 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_opacity * loss_opacity
                 loss_dict['loss_opacity'] = loss_opacity
 
-            if self.opt.lambda_entropy > 0:
+            if self.opt.lambda_entropy > 0 and self.opt.network != 'neus':
 
                 alphas = outputs['weights'].clamp(1e-5, 1 - 1e-5)
                 # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
