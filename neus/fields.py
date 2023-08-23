@@ -126,6 +126,7 @@ class RenderingNetwork(nn.Module):
                  d_hidden,
                  n_layers,
                  weight_norm=True,
+                 multires=0,
                  multires_view=0,
                  squeeze_out=True):
         super().__init__()
@@ -135,10 +136,15 @@ class RenderingNetwork(nn.Module):
         dims = [d_in + d_feature] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.embedview_fn = None
+        self.embed_fn = None
         if multires_view > 0 and self.mode != 'basic':
-            embedview_fn, input_ch = get_embedder(multires_view)
+            embedview_fn, input_ch = get_embedder(multires_view, input_dims=3)
             self.embedview_fn = embedview_fn
-            dims[0] += (input_ch - 3)
+            dims[0] += input_ch - 3
+        if multires > 0:
+            embed_fn, input_ch = get_embedder(multires, input_dims=3)
+            self.embed_fn = embed_fn
+            dims[0] += input_ch - 3
 
         self.num_layers = len(dims)
 
@@ -156,6 +162,8 @@ class RenderingNetwork(nn.Module):
     def forward(self, points, normals, view_dirs, feature_vectors):
         if self.embedview_fn is not None:
             view_dirs = self.embedview_fn(view_dirs)
+        if self.embed_fn is not None:
+            points = self.embed_fn(points)
 
         rendering_input = None
 
