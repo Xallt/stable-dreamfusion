@@ -3,30 +3,45 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from .embedder import get_embedder
+from encoding import get_encoder
 
 
 # This implementation is borrowed from IDR: https://github.com/lioryariv/idr
 class SDFNetwork(nn.Module):
-    def __init__(self,
-                 d_in,
-                 d_out,
-                 d_hidden,
-                 n_layers,
-                 skip_in=(4,),
-                 multires=0,
-                 bias=0.5,
-                 scale=1,
-                 geometric_init=True,
-                 weight_norm=True,
-                 inside_outside=False):
+    def __init__(
+            self,
+            d_in,
+            d_out,
+            d_hidden,
+            n_layers,
+            skip_in=(4,),
+            multires=0,
+            bias=0.5,
+            scale=1,
+            geometric_init=True,
+            weight_norm=True,
+            inside_outside=False,
+            add_sphere_sdf=False,
+            sphere_radius=0.7,
+            encoding_type='frequency'
+        ):
         super(SDFNetwork, self).__init__()
+        assert not add_sphere_sdf or not geometric_init, "add_sphere_sdf and geometric_init have conflicting initializations"
+        assert not geometric_init, "get_encoder doesn't have include_inputs option"
 
         dims = [d_in] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.embed_fn_fine = None
+        self.add_sphere_sdf = add_sphere_sdf
+        self.sphere_radius = sphere_radius
 
         if multires > 0:
-            embed_fn, input_ch = get_embedder(multires, input_dims=d_in)
+            # embed_fn, input_ch = get_embedder(multires, input_dims=d_in, include_input=geometric_init)
+            embed_fn, input_ch = get_encoder(
+                encoding_type,
+                input_dim=3,
+                multires=multires
+            )
             self.embed_fn_fine = embed_fn
             dims[0] = input_ch
 
@@ -60,10 +75,14 @@ class SDFNetwork(nn.Module):
                 elif multires > 0 and l in self.skip_in:
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
-                    torch.nn.init.constant_(lin.weight[:, -(dims[0] - 3):], 0.0)
+                    # torch.nn.init.constant_(lin.weight[:, -(dims[0] - 3):], 0.0)
                 else:
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
+
+            if add_sphere_sdf:
+                torch.nn.init.constant_(lin.bias, 0.0)
+                torch.nn.init.normal_(lin.weight, 0.0, 0.0001)
 
             if weight_norm:
                 lin = nn.utils.weight_norm(lin)
@@ -73,6 +92,8 @@ class SDFNetwork(nn.Module):
         self.activation = nn.Softplus(beta=100)
 
     def forward(self, inputs):
+        if self.add_sphere_sdf:
+            inputs_norm = torch.norm(inputs, dim=-1)
         inputs = inputs * self.scale
         if self.embed_fn_fine is not None:
             inputs = self.embed_fn_fine(inputs)
@@ -89,6 +110,8 @@ class SDFNetwork(nn.Module):
             if l < self.num_layers - 2:
                 x = self.activation(x)
         x[..., 0] = x[..., 0] / self.scale
+        if self.add_sphere_sdf:
+            x[..., 0] = x[..., 0] + inputs_norm - self.sphere_radius
         return x
 
     def sdf(self, x):
@@ -128,7 +151,8 @@ class RenderingNetwork(nn.Module):
                  weight_norm=True,
                  multires=0,
                  multires_view=0,
-                 squeeze_out=True):
+                 squeeze_out=True,
+                 encoding_type='frequency'):
         super().__init__()
 
         self.mode = mode
@@ -142,7 +166,11 @@ class RenderingNetwork(nn.Module):
             self.embedview_fn = embedview_fn
             dims[0] += input_ch - 3
         if multires > 0:
-            embed_fn, input_ch = get_embedder(multires, input_dims=3)
+            embed_fn, input_ch = get_encoder(
+                encoding_type,
+                input_dim=3,
+                multires=multires
+            )
             self.embed_fn = embed_fn
             dims[0] += input_ch - 3
 
