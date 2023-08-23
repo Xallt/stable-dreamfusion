@@ -36,9 +36,9 @@ class Embedder:
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 
 
-def get_embedder(multires, input_dims=3):
+def get_embedder(multires, input_dims=3, include_input=True):
     embed_kwargs = {
-        'include_input': True,
+        'include_input': include_input,
         'input_dims': input_dims,
         'max_freq_log2': multires-1,
         'num_freqs': multires,
