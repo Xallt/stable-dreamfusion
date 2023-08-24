@@ -900,6 +900,7 @@ class Trainer(object):
                     axes[2].imshow(pred_denoised)
                     axes[2].set_title('Denoised')
                 plt.savefig(save_path)
+                plt.close()
 
                 pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                 pbar.update(loader.batch_size)
