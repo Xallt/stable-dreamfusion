@@ -41,10 +41,23 @@ class FreqEncoder_torch(nn.Module):
 
         return out
 
+class IncludeInputsWrapper(nn.Module):
+    def __init__(self, encoder):
+        super().__init__()
+        self.encoder = encoder
+        self.input_dim = encoder.input_dim
+        self.output_dim = encoder.output_dim + self.input_dim
+
+    def forward(self, x, **kwargs):
+        out = self.encoder(x, **kwargs)
+        out = torch.cat([x, out], dim=-1)
+        return out
+
 def get_encoder(encoding, input_dim=3, 
                 multires=6, 
                 degree=4,
                 num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=19, desired_resolution=2048, align_corners=False, interpolation='linear',
+                include_inputs=False,
                 **kwargs):
 
     if encoding == 'None':
@@ -75,5 +88,8 @@ def get_encoder(encoding, input_dim=3,
 
     else:
         raise NotImplementedError('Unknown encoding mode, choose from [None, frequency, sphere_harmonics, hashgrid, tiledgrid]')
+
+    if include_inputs:
+        encoder = IncludeInputsWrapper(encoder)
 
     return encoder, encoder.output_dim

@@ -27,7 +27,6 @@ class SDFNetwork(nn.Module):
         ):
         super(SDFNetwork, self).__init__()
         assert not add_sphere_sdf or not geometric_init, "add_sphere_sdf and geometric_init have conflicting initializations"
-        assert not geometric_init, "get_encoder doesn't have include_inputs option"
 
         dims = [d_in] + [d_hidden for _ in range(n_layers)] + [d_out]
 
@@ -40,7 +39,8 @@ class SDFNetwork(nn.Module):
             embed_fn, input_ch = get_encoder(
                 encoding_type,
                 input_dim=3,
-                multires=multires
+                multires=multires,
+                include_inputs=geometric_init
             )
             self.embed_fn_fine = embed_fn
             dims[0] = input_ch
