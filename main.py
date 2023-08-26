@@ -171,6 +171,7 @@ if __name__ == '__main__':
             conf['model.sdf_network'],
             conf['model.variance_network'],
             conf['model.rendering_network'],
+            conf['model.background_network'],
             **conf['model.neus_renderer']
         ).to(device)
     if opt.dmtet and opt.init_ckpt != '':
