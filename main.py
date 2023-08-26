@@ -24,6 +24,7 @@ def parse_args(args=None):
     parser.add_argument('--seed', default=None)
     parser.add_argument('--network', type=str, default='nerf', help='type of network to use', choices=['nerf', 'neus'])
     parser.add_argument('--dummy', action='store_true', help="dummy training")
+    parser.add_argument('--batch_size', type=int, default=1, help="batch size for training")
 
     parser.add_argument('--save_mesh', action='store_true', help="export an obj mesh with texture")
     parser.add_argument('--mcubes_resolution', type=int, default=256, help="mcubes resolution for extracting mesh")
@@ -36,7 +37,7 @@ def parse_args(args=None):
     ### training options
     parser.add_argument('--iters', type=int, default=10000, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-3, help="max learning rate")
-    parser.add_argument('--warm_iters', type=int, default=500, help="training iters")
+    parser.add_argument('--warm_iters', type=int, default=500, help="training iters for lr warmup")
     parser.add_argument('--min_lr', type=float, default=1e-4, help="minimal learning rate")
     parser.add_argument('--ckpt', type=str, default='latest')
     parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")
@@ -88,6 +89,7 @@ def parse_args(args=None):
     parser.add_argument('--lambda_normal', type=float, default=0, help="loss scale for mesh normal smoothness")
     parser.add_argument('--lambda_lap', type=float, default=0.2, help="loss scale for mesh laplacian")
     parser.add_argument('--lambda_eikonal', type=float, default=1e-2, help="loss scale for eikonal loss")
+    parser.add_argument('--lambda_guidance', type=float, default=5e-1, help="loss scale for the diffusion guidance")
     parser.add_argument('--lambda_guidance', type=float, default=1e-1, help="loss scale for the diffusion guidance")
 
     ### GUI options
@@ -205,7 +207,7 @@ if __name__ == '__main__':
 
     else:
 
-        train_loader = NeRFDataset(opt, device=device, type='train', H=opt.h, W=opt.w, size=100).dataloader()
+        train_loader = NeRFDataset(opt, device=device, type='train', H=opt.h, W=opt.w, size=100, batch_size=opt.batch_size).dataloader()
 
         if opt.optim == 'adan':
             from optimizer import Adan
@@ -214,7 +216,7 @@ if __name__ == '__main__':
         else: # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)
 
-        if opt.backbone == 'vanilla':
+        if False: # One of the papers shows that warmup is not necessary
             warm_up_with_cosine_lr = lambda iter: iter / opt.warm_iters if iter <= opt.warm_iters \
                 else max(0.5 * ( math.cos((iter - opt.warm_iters) /(opt.iters - opt.warm_iters) * math.pi) + 1), 
                          opt.min_lr / opt.lr)

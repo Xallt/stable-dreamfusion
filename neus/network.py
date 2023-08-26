@@ -36,16 +36,16 @@ class NeuSNetwork(NeuSRenderer):
             rendering_network_config,
             background_network_config,
             n_samples,
-            n_importance,
             n_outside,
-            up_sample_steps,
+            upsample_steps,
+            bg_radius,
             perturb,
         ):
         super().__init__(
             n_samples,
-            n_importance,
             n_outside,
-            up_sample_steps,
+            upsample_steps,
+            bg_radius,
             perturb
         )
 

@@ -404,22 +404,21 @@ class NeuSRenderer(VolumeRenderer):
     def __init__(
             self,
             n_samples,
-            n_importance,
             n_outside,
-            up_sample_steps,
+            upsample_steps,
+            bg_radius,
             perturb
         ):
         super().__init__(
             bound=1,
             min_near=0.05,
             num_steps=n_samples,
-            upsample_steps=n_importance
+            upsample_steps=upsample_steps
         )
         self.n_samples = n_samples
-        self.n_importance = n_importance
         self.n_outside = n_outside
-        self.up_sample_steps = up_sample_steps
         self.perturb = perturb
+        self.bg_radius = bg_radius
 
     def sdf(self, pts):
         raise NotImplementedError()
@@ -445,9 +444,13 @@ class NeuSRenderer(VolumeRenderer):
             for yi, ys in enumerate(Y):
                 for zi, zs in enumerate(Z):
                     xx, yy, zz = custom_meshgrid(xs, ys, zs)
-                    pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1) # [S, 3]
+                    pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1).to(self.aabb_train.device) # [S, 3]
                     with torch.no_grad():
-                        val = self.sdf(pts.to(self.aabb_train.device))
+                        val = self.sdf(pts)
+                    # We were masking out all points outside the sphere
+                    # So now we have to manually modify all sdfs outside to be positive
+                    inside_sphere = (pts.norm(dim=-1, keepdim=True) < self.bg_radius).float()
+                    val = val * inside_sphere + 1.0 * (1.0 - inside_sphere)
                     sdfs[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs)] = val.reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy() # [S, 1] --> [x, y, z]
 
         vertices, triangles = mcubes.marching_cubes(-sdfs, 0)
@@ -605,8 +608,8 @@ class NeuSRenderer(VolumeRenderer):
         sdf = self.sdf(pts.reshape(-1, 3)).reshape(batch_size, self.n_samples)
         device = rays_o.device
         pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]  # n_rays, n_samples, 3
-        radius = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
-        inside_sphere = (radius[:, :-1] < 1.0) | (radius[:, 1:] < 1.0)
+        pts_norm = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
+        inside_sphere = (pts_norm[:, :-1] < self.bg_radius) | (pts_norm[:, 1:] < self.bg_radius)
         sdf = sdf.reshape(batch_size, n_samples)
         prev_sdf, next_sdf = sdf[:, :-1], sdf[:, 1:]
         prev_z_vals, next_z_vals = z_vals[:, :-1], z_vals[:, 1:]
@@ -639,6 +642,7 @@ class NeuSRenderer(VolumeRenderer):
         prev_cdf = torch.sigmoid(prev_esti_sdf * inv_s)
         next_cdf = torch.sigmoid(next_esti_sdf * inv_s)
         alpha = (prev_cdf - next_cdf + 1e-5) / (prev_cdf + 1e-5)
+        alpha = alpha * inside_sphere
         weights = alpha * torch.cumprod(
             torch.cat([torch.ones([batch_size, 1], device=device), 1. - alpha + 1e-7], -1), -1)[:, :-1]
 
@@ -654,9 +658,6 @@ class NeuSRenderer(VolumeRenderer):
             z_vals,
             dirs,
             bg_color=None,
-            background_alpha=0.0,
-            background_sampled_color=None,
-            sphere_radius=0.7,
             cos_anneal_ratio=0.0,
             prefix=None,
             **kwargs
@@ -705,8 +706,8 @@ class NeuSRenderer(VolumeRenderer):
         alpha = ((p + 1e-5) / (c + 1e-5)).reshape(batch_size, n_samples).clip(0.0, 1.0)
 
         pts_norm = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=True).reshape(batch_size, n_samples)
-        inside_sphere = (pts_norm < sphere_radius).float().detach()
-        relax_inside_sphere = (pts_norm < sphere_radius * 1.2).float().detach()
+        inside_sphere = (pts_norm < self.bg_radius).float().detach()
+        relax_inside_sphere = (pts_norm < self.bg_radius * 1.2).float().detach()
 
         # Enabled for now. Masks out all points outside the sphere
         alpha = alpha * inside_sphere

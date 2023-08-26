@@ -326,6 +326,7 @@ class Trainer(object):
                 
                 text_z = self.guidance.get_text_embeds([text], [negative_text])
                 self.text_z.append(text_z)
+            self.text_z = torch.stack(self.text_z, dim=0)
 
     def __del__(self):
         if self.log_ptr: 
@@ -421,7 +422,7 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_orient * loss_orient
                 loss_dict['loss_orient'] = loss_orient
             if self.opt.network == 'neus':
-                loss_eikonal = outputs['gradient_error']
+                loss_eikonal = outputs['gradient_error'].mean()
                 loss = loss + self.opt.lambda_eikonal * loss_eikonal
                 loss_dict['loss_eikonal'] = loss_eikonal
         else:

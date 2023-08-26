@@ -127,11 +127,13 @@ class StableDiffusion(nn.Module):
     def eval_step(self, pred_rgb, text_embeddings, guidance_scale=100):
         pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
         latents = self.encode_imgs(pred_rgb_512)
-        t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
+        t = torch.randint(self.min_step, self.max_step + 1, [pred_rgb.shape[0]], dtype=torch.long, device=self.device)
         with torch.no_grad():
             noise = torch.randn_like(latents)
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             latent_model_input = torch.cat([latents_noisy] * 2)
+            t = t.repeat(2)
+            text_embeddings = torch.cat([text_embeddings[:, 0], text_embeddings[:, 1]], dim=0)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
         noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
@@ -149,7 +151,7 @@ class StableDiffusion(nn.Module):
             latents = self.encode_imgs(pred_rgb_512)
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
+        t = torch.randint(self.min_step, self.max_step + 1, [pred_rgb.shape[0]], dtype=torch.long, device=self.device)
 
         # predict the noise residual with unet, NO grad!
         # add noise
@@ -157,12 +159,14 @@ class StableDiffusion(nn.Module):
         latents_noisy = self.scheduler.add_noise(latents, noise, t)
         # pred noise
         latent_model_input = torch.cat([latents_noisy] * 2)
+        t_input = t.repeat(2)
+        text_embeddings = torch.cat([text_embeddings[:, 0], text_embeddings[:, 1]], dim=0)
             # Save input tensors for UNet
             #torch.save(latent_model_input, "train_latent_model_input.pt")
             #torch.save(t, "train_t.pt")
             #torch.save(text_embeddings, "train_text_embeddings.pt")
         with torch.no_grad():
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            noise_pred = self.unet(latent_model_input, t_input, encoder_hidden_states=text_embeddings).sample
 
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -172,7 +176,7 @@ class StableDiffusion(nn.Module):
 
         w = torch.sqrt(1 - self.alphas[t])
 
-        loss = w * F.mse_loss(latents, latents_pred.detach(), reduction='sum') / latents.shape[0]
+        loss = (((latents - latents_pred.detach()) * w[:, None, None, None]) ** 2).sum() / latents.shape[0]
 
         return loss 
 
