@@ -68,6 +68,8 @@ class SDFNetwork(nn.Module):
                     else:
                         torch.nn.init.normal_(lin.weight, mean=-np.sqrt(np.pi) / np.sqrt(dims[l]), std=0.0001)
                         torch.nn.init.constant_(lin.bias, bias)
+                    if l in self.skip_in:
+                        torch.nn.init.constant_(lin.weight[:, -(dims[0] - 3):], 0.0)
                 elif multires > 0 and l == 0:
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.constant_(lin.weight[:, 3:], 0.0)
@@ -75,7 +77,7 @@ class SDFNetwork(nn.Module):
                 elif multires > 0 and l in self.skip_in:
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
-                    # torch.nn.init.constant_(lin.weight[:, -(dims[0] - 3):], 0.0)
+                    torch.nn.init.constant_(lin.weight[:, -(dims[0] - 3):], 0.0)
                 else:
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
