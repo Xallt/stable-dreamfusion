@@ -395,7 +395,7 @@ class Trainer(object):
         # encode pred_rgb to latents
         guidance_loss = self.guidance.train_step(text_z, pred_rgb, as_latent=as_latent)
 
-        loss += guidance_loss
+        loss += guidance_loss * self.opt.lambda_guidance
         loss_dict['guidance_loss'] = guidance_loss
 
         # regularizations

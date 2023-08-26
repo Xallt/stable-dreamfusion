@@ -88,6 +88,7 @@ def parse_args(args=None):
     parser.add_argument('--lambda_normal', type=float, default=0, help="loss scale for mesh normal smoothness")
     parser.add_argument('--lambda_lap', type=float, default=0.2, help="loss scale for mesh laplacian")
     parser.add_argument('--lambda_eikonal', type=float, default=1e-2, help="loss scale for eikonal loss")
+    parser.add_argument('--lambda_guidance', type=float, default=1e-1, help="loss scale for the diffusion guidance")
 
     ### GUI options
     parser.add_argument('--gui', action='store_true', help="start a GUI")
