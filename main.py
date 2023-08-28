@@ -90,7 +90,7 @@ def parse_args(args=None):
     parser.add_argument('--lambda_lap', type=float, default=0.2, help="loss scale for mesh laplacian")
     parser.add_argument('--lambda_eikonal', type=float, default=1e-2, help="loss scale for eikonal loss")
     parser.add_argument('--lambda_guidance', type=float, default=5e-1, help="loss scale for the diffusion guidance")
-    parser.add_argument('--lambda_guidance', type=float, default=1e-1, help="loss scale for the diffusion guidance")
+    parser.add_argument('--lambda_depth', type=float, default=0, help="loss scale for the depth centerness loss")
 
     ### GUI options
     parser.add_argument('--gui', action='store_true', help="start a GUI")
