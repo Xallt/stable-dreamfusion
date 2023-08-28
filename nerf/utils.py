@@ -425,6 +425,18 @@ class Trainer(object):
                 loss_eikonal = outputs['gradient_error'].mean()
                 loss = loss + self.opt.lambda_eikonal * loss_eikonal
                 loss_dict['loss_eikonal'] = loss_eikonal
+            if self.opt.lambda_depth > 0:
+                depth_border_coef = 0.125
+                brd = int(H * depth_border_coef) # Border size
+                center_depth = pred_depth[..., brd:-brd, brd:-brd]
+                border_depth_mean = (pred_depth.sum() - center_depth.sum()) / (H*W-(H-2*brd)*(W-2*brd))
+                center_depth_mean = center_depth.mean()
+                depth_diff = torch.max(center_depth_mean - border_depth_mean, torch.tensor(1e-12).to(center_depth))
+                depth_loss = - torch.log(depth_diff)
+                depth_loss = depth_loss
+                loss = loss + self.opt.lambda_depth * depth_loss
+                loss_dict['loss_depth'] = depth_loss
+
         else:
             if self.opt.lambda_normal > 0:
                 loss = loss + self.opt.lambda_normal * outputs['normal_loss']
