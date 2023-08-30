@@ -112,9 +112,16 @@ class VolumeRenderer(torch.nn.Module):
     def export_mesh(self, path, resolution=None, decimate_target=-1, S=128):
         raise NotImplementedError()
     def run(self, rays_o, rays_d, light_d=None, ambient_ratio=1.0, shading='albedo', bg_color=None, perturb=False, **kwargs):
-        # rays_o, rays_d: [B, N, 3], assumes B == 1
+        """
+        Args:
+            rays_o: [B, N, 3]
+            rays_d: [B, N, 3]
+        Returns:
+            results: dict
+                image: [B, N, 3]
+                depth: [B, N]
+        """
         # bg_color: [BN, 3] in range [0, 1]
-        # return: image: [B, N, 3], depth: [B, N]
 
         prefix = rays_o.shape[:-1]
         rays_o = rays_o.contiguous().view(-1, 3)
@@ -142,7 +149,7 @@ class VolumeRenderer(torch.nn.Module):
         #print(f'nears = {nears.min().item()} ~ {nears.max().item()}, fars = {fars.min().item()} ~ {fars.max().item()}')
 
         z_vals = torch.linspace(0.0, 1.0, self.num_steps, device=device).unsqueeze(0) # [1, T]
-        z_vals = z_vals.expand((N, self.num_steps)) # [N, T]
+        z_vals = z_vals.expand(( N, self.num_steps)) # [N, T]
         z_vals = nears + (fars - nears) * z_vals # [N, T], in [nears, fars]
 
         # perturb z_vals
@@ -151,12 +158,13 @@ class VolumeRenderer(torch.nn.Module):
             z_vals = z_vals + (torch.rand(z_vals.shape, device=device) - 0.5) * sample_dist
             #z_vals = z_vals.clamp(nears, fars) # avoid out of bounds xyzs.
 
-        # generate xyzs
-        xyzs = rays_o.unsqueeze(-2) + rays_d.unsqueeze(-2) * z_vals.unsqueeze(-1) # [N, 1, 3] * [N, T, 1] -> [N, T, 3]
-        xyzs = torch.min(torch.max(xyzs, aabb[:3]), aabb[3:]) # a manual clip.
 
         # upsample z_vals (nerf-like)
         if self.upsample_steps > 0:
+            # generate xyzs
+            xyzs = rays_o.unsqueeze(-2) + rays_d.unsqueeze(-2) * z_vals.unsqueeze(-1) # [N, 1, 3] * [N, T, 1] -> [N, T, 3]
+            xyzs = torch.min(torch.max(xyzs, aabb[:3]), aabb[3:]) # a manual clip.
+            
             with torch.no_grad():
 
                 weights = self.run_core_weight_only(rays_o, rays_d, z_vals, sample_dist)
@@ -192,16 +200,25 @@ class VolumeRenderer(torch.nn.Module):
             bg_color=bg_color,
             prefix=prefix
         )
+        results['image'] = results['image'].view(*prefix, 3)
+        results['depth'] = results['depth'].view(*prefix)
+        results['weights_sum'] = results['weights_sum'].view(*prefix)
         return results
     def render(self, rays_o, rays_d, mvp, h, w, staged=False, max_ray_batch=4096, **kwargs):
+        """
+        Args:
+            rays_o: [B, N, 3]
+            rays_d: [B, N, 3]
+        """
         if max_ray_batch is None:
             return self.run(rays_o, rays_d, **kwargs)
         else:
             B, N = rays_o.shape[:2]
             device = rays_o.device
 
-            results = defaultdict(list) # Will automatically create a new list for each key
+            results_batches = defaultdict(list) # Will automatically create a new list for each key
             for b in range(B):
+                results = defaultdict(list)
                 head = 0
                 while head < N:
                     tail = min(head + max_ray_batch, N)
@@ -212,11 +229,14 @@ class VolumeRenderer(torch.nn.Module):
 
                     head += max_ray_batch
 
-            # Concatenate all the results along the second dimension
-            for key in results:
-                if results[key][0].ndim < 2:
-                    results[key] = torch.stack(results[key], dim=-1)
-                else:
-                    results[key] = torch.cat(results[key], dim=1)
+                # Concatenate all the results along the second dimension
+                for key in results:
+                    if key in ['image', 'depth']:
+                        results[key] = torch.cat(results[key], dim=1)[0]
+                    else:
+                        results[key] = torch.stack(results[key], dim=0)
+                    results_batches[key].append(results[key])
+            for key in results_batches:
+                results_batches[key] = torch.stack(results_batches[key], dim=0)
 
-            return results
+            return results_batches
