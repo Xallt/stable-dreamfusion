@@ -31,8 +31,10 @@ class SDFNetwork(nn.Module):
         dims = [d_in] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.embed_fn_fine = None
+        self.encoding_type = encoding_type
         self.add_sphere_sdf = add_sphere_sdf
         self.sphere_radius = sphere_radius
+        self.warmup_progress = 0
 
         if multires > 0:
             # embed_fn, input_ch = get_embedder(multires, input_dims=d_in, include_input=geometric_init)
@@ -40,7 +42,8 @@ class SDFNetwork(nn.Module):
                 encoding_type,
                 input_dim=3,
                 multires=multires,
-                include_inputs=geometric_init
+                include_inputs=geometric_init,
+                num_levels=9
             )
             self.embed_fn_fine = embed_fn
             dims[0] = input_ch
@@ -93,12 +96,18 @@ class SDFNetwork(nn.Module):
 
         self.activation = nn.Softplus(beta=100)
 
+    def set_warmup_progress(self, progress):
+        self.warmup_progress = progress
+
     def forward(self, inputs):
         if self.add_sphere_sdf:
             inputs_norm = torch.norm(inputs, dim=-1)
         inputs = inputs * self.scale
         if self.embed_fn_fine is not None:
-            inputs = self.embed_fn_fine(inputs)
+            kwargs = {}
+            if self.encoding_type == 'frequency':
+                kwargs['freq_threshold'] = self.warmup_progress
+            inputs = self.embed_fn_fine(inputs, **kwargs)
 
         x = inputs
         for l in range(0, self.num_layers - 1):

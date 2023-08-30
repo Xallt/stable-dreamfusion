@@ -26,7 +26,8 @@ class FreqEncoder_torch(nn.Module):
 
         self.freq_bands = self.freq_bands.numpy().tolist()
 
-    def forward(self, input, **kwargs):
+    def forward(self, input, freq_threshold=1.0, **kwargs):
+        assert freq_threshold >= 0.0 and freq_threshold <= 1.0, 'progress in FreqEncoder should be in [0, 1]'
 
         out = []
         if self.include_input:
@@ -34,8 +35,18 @@ class FreqEncoder_torch(nn.Module):
 
         for i in range(len(self.freq_bands)):
             freq = self.freq_bands[i]
+            cur_freq_progress = i / len(self.freq_bands)
+
+            # Coefficient computed using freq_threshold
+            enc_coef = 1.0
+            if cur_freq_progress > freq_threshold:
+                enc_coef = 0.0
+            elif cur_freq_progress > freq_threshold - 1 / len(self.freq_bands):
+                enc_coef = (freq_threshold - cur_freq_progress) * len(self.freq_bands)
+            
             for p_fn in self.periodic_fns:
-                out.append(p_fn(input * freq))
+                out_enc = p_fn(input * freq)
+                out.append(out_enc * enc_coef)
 
         out = torch.cat(out, dim=-1)
 

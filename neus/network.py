@@ -68,6 +68,8 @@ class NeuSNetwork(NeuSRenderer):
 
     def background_color(self, pts, dirs):
         return self.background_network(dirs)
+    def set_warmup_progress(self, progress):
+        self.sdf_network.set_warmup_progress(progress)
 
     def forward(self, pts, dirs, create_graph=True):
         gradients, sdf_nn_output = self.sdf_network.gradient(pts, create_graph=create_graph, return_output=True)

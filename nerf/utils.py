@@ -353,6 +353,9 @@ class Trainer(object):
         B, N = rays_o.shape[:2]
         H, W = data['H'], data['W']
 
+        if hasattr(self.model, 'set_warmup_progress'):
+            self.model.set_warmup_progress(self.global_step / self.opt.warmup_iters)
+
         if self.global_step < self.opt.warmup_iters:
             ambient_ratio = 1.0
             shading = 'normal'
