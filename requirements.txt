@@ -4,6 +4,7 @@ trimesh
 opencv-python
 tensorboardX
 torch
+pyhocon
 numpy 
 pandas
 tqdm
