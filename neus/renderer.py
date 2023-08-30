@@ -6,7 +6,6 @@ import logging
 import cv2
 import os
 import mcubes
-from icecream import ic
 from volume_renderer import VolumeRenderer
 from .fields import SDFNetwork, RenderingNetwork, NeRF, SingleVarianceNetwork
 from nerf.renderer import custom_meshgrid, clean_mesh, decimate_mesh
