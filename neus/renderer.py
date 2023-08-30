@@ -418,6 +418,8 @@ class NeuSRenderer(VolumeRenderer):
         self.n_outside = n_outside
         self.perturb = perturb
         self.bg_radius = bg_radius
+        self.center = torch.nn.Parameter(torch.zeros(1, 3), requires_grad=False)
+
 
     def sdf(self, pts):
         raise NotImplementedError()
@@ -603,12 +605,16 @@ class NeuSRenderer(VolumeRenderer):
     def run_core_weight_only(self, rays_o, rays_d, z_vals, sample_dist, inv_s=64):
         batch_size, n_samples = z_vals.shape
 
-        pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]
+        pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None] # n_rays, n_samples, 3
+
+        # Apply the learned adaptive center
+        pts += self.center
+
         sdf = self.sdf(pts.reshape(-1, 3)).reshape(batch_size, self.n_samples)
         device = rays_o.device
         pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]  # n_rays, n_samples, 3
-        pts_norm = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
-        inside_sphere = (pts_norm[:, :-1] < self.bg_radius) | (pts_norm[:, 1:] < self.bg_radius)
+        pts_norm = torch.linalg.norm(pts - self.center, ord=2, dim=-1, keepdim=False)
+        inside_sphere = ((pts_norm[:, :-1] < self.bg_radius) | (pts_norm[:, 1:] < self.bg_radius)).float().detach()
         sdf = sdf.reshape(batch_size, n_samples)
         prev_sdf, next_sdf = sdf[:, :-1], sdf[:, 1:]
         prev_z_vals, next_z_vals = z_vals[:, :-1], z_vals[:, 1:]
@@ -652,10 +658,10 @@ class NeuSRenderer(VolumeRenderer):
 
     def run_core(
             self,
-            rays_o,
-            rays_d,
-            z_vals,
-            dirs,
+            rays_o, # [N, 3]
+            rays_d, # [N, 3]
+            z_vals, # [N, T]
+            dirs,   # [N, T, 3]
             bg_color=None,
             cos_anneal_ratio=0.0,
             prefix=None,
@@ -673,18 +679,21 @@ class NeuSRenderer(VolumeRenderer):
         # Section midpoints
         pts = rays_o[:, None, :] + rays_d[:, None, :] * mid_z_vals[..., :, None]  # n_rays, n_samples, 3
 
-        pts = pts.reshape(-1, 3)
-        dirs = dirs.reshape(-1, 3)
+        # Apply the learned adaptive center
+        pts += self.center
 
-        network_output = self(pts, dirs, create_graph=self.training)
-        sdf = network_output['sdf']
-        gradients = network_output['gradients']
-        sampled_color = network_output['color'].reshape(batch_size, n_samples, 3)
+        pts_flat = pts.reshape(-1, 3) # [NT, 3]
+        dirs_flat = dirs.reshape(-1, 3) # [NT, 3]
+
+        network_output = self(pts_flat, dirs_flat, create_graph=self.training)
+        sdf = network_output['sdf'] # [NT, 1]
+        gradients = network_output['gradients'] # [NT, 3]
+        sampled_color = network_output['color'].reshape(batch_size, n_samples, 3) # [N, T, 3]
 
         inv_s = self.deviation(torch.zeros([1, 3], device=device))[:, :1].clip(1e-6, 1e6)           # Single parameter
-        inv_s = inv_s.expand(batch_size * n_samples, 1)
+        inv_s = inv_s.expand(batch_size * n_samples, 1) # [NT, 1]
 
-        true_cos = (dirs * gradients).sum(-1, keepdim=True)
+        true_cos = (dirs_flat * gradients).sum(-1, keepdim=True)
 
         # "cos_anneal_ratio" grows from 0 to 1 in the beginning training iterations. The anneal strategy below makes
         # the cos value "not dead" at the beginning training iterations, for better convergence.
@@ -702,9 +711,9 @@ class NeuSRenderer(VolumeRenderer):
         p = prev_cdf - next_cdf
         c = prev_cdf
 
-        alpha = ((p + 1e-5) / (c + 1e-5)).reshape(batch_size, n_samples).clip(0.0, 1.0)
+        alpha = ((p + 1e-5) / (c + 1e-5)).reshape(batch_size, n_samples).clip(0.0, 1.0) # [N, T]
 
-        pts_norm = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=True).reshape(batch_size, n_samples)
+        pts_norm = torch.linalg.norm(pts - self.center, ord=2, dim=-1)
         inside_sphere = (pts_norm < self.bg_radius).float().detach()
         relax_inside_sphere = (pts_norm < self.bg_radius * 1.2).float().detach()
 
@@ -725,25 +734,24 @@ class NeuSRenderer(VolumeRenderer):
                                             dim=-1) - 1.0) ** 2
         gradient_error = (relax_inside_sphere * gradient_error).sum() / (relax_inside_sphere.sum() + 1e-5)
 
-        color = color.view(*prefix, 3)
-        depth = depth.view(*prefix)
-        weights_sum = weights_sum.reshape(*prefix)
+        centroid = (pts * alpha[..., None]).sum(dim=(0, 1)) / (alpha.sum() + 1e-5)
 
         if self.training:
             return {
-                'image': color,
-                'depth': depth,
-                'sdf': sdf,
-                'pts': pts,
-                'dists': dists,
-                'gradients': gradients.reshape(batch_size, n_samples, 3),
+                'image': color, # [N, 3]
+                'depth': depth, # [N]
+                'pts': pts, # [N, T, 3]
+                'dists': dists, # [N, T]
+                'gradients': gradients.reshape(batch_size, n_samples, 3), # [N, T, 3]
                 's_val': 1.0 / inv_s,
                 'mid_z_vals': mid_z_vals,
-                'weights': weights,
-                'weights_sum': weights_sum,
+                'alpha': alpha, # [N, T]
+                'weights': weights, # [N, T]
+                'weights_sum': weights_sum, # [N, 1]
                 'cdf': c.reshape(batch_size, n_samples),
                 'gradient_error': gradient_error,
-                'inside_sphere': inside_sphere
+                'inside_sphere': inside_sphere,
+                'centroid': centroid
             }
         else:
             # In order for `gradients` to be computed during eval, torch.no_grad can not be used
