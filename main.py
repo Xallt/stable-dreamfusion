@@ -83,13 +83,13 @@ def parse_args(args=None):
 
     ### regularizations
     parser.add_argument('--lambda_entropy', type=float, default=1e-3, help="loss scale for alpha entropy")
-    parser.add_argument('--lambda_opacity', type=float, default=0, help="loss scale for alpha value")
+    parser.add_argument('--lambda_opacity', type=float, default=1e-1, help="loss scale for alpha value")
     parser.add_argument('--lambda_orient', type=float, default=1e-2, help="loss scale for orientation")
     parser.add_argument('--lambda_tv', type=float, default=0, help="loss scale for total variation")
     parser.add_argument('--lambda_normal', type=float, default=0, help="loss scale for mesh normal smoothness")
     parser.add_argument('--lambda_lap', type=float, default=0.2, help="loss scale for mesh laplacian")
-    parser.add_argument('--lambda_eikonal', type=float, default=1e-2, help="loss scale for eikonal loss")
-    parser.add_argument('--lambda_guidance', type=float, default=5e-1, help="loss scale for the diffusion guidance")
+    parser.add_argument('--lambda_eikonal', type=float, default=1e-3, help="loss scale for eikonal loss")
+    parser.add_argument('--lambda_guidance', type=float, default=1, help="loss scale for the diffusion guidance")
     parser.add_argument('--lambda_depth', type=float, default=0, help="loss scale for the depth centerness loss")
 
     ### GUI options
@@ -162,7 +162,7 @@ if __name__ == '__main__':
         from pyhocon import ConfigFactory
 
         # TODO: Make the initialization configurable
-        conf_path = '/home/dmitry/grn/Text-to-3D/stable-dreamfusion/womask.conf'
+        conf_path = os.path.join(os.path.dirname(__file__), 'womask.conf')
         f = open(conf_path)
         conf_text = f.read()
         conf_text = conf_text.replace('CASE_NAME', 'womask')
@@ -206,8 +206,8 @@ if __name__ == '__main__':
                 trainer.save_mesh()
 
     else:
-
-        train_loader = NeRFDataset(opt, device=device, type='train', H=opt.h, W=opt.w, size=100, batch_size=opt.batch_size).dataloader()
+        train_size = 100
+        train_loader = NeRFDataset(opt, device=device, type='train', H=opt.h, W=opt.w, size=train_size, batch_size=opt.batch_size).dataloader()
 
         if opt.optim == 'adan':
             from optimizer import Adan
@@ -246,5 +246,5 @@ if __name__ == '__main__':
         else:
             valid_loader = NeRFDataset(opt, device=device, type='val', H=opt.H, W=opt.W, size=5).dataloader()
 
-            max_epoch = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
+            max_epoch = np.ceil(opt.iters / train_size).astype(np.int32)
             trainer.train(train_loader, valid_loader, max_epoch)
