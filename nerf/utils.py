@@ -380,6 +380,7 @@ class Trainer(object):
         
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
         pred_depth = outputs['depth'].reshape(B, 1, H, W)
+        pred_weights_sum = outputs['weights_sum'].reshape(B, H, W)
 
         if as_latent:
             pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B, H, W, 4).permute(0, 3, 1, 2).contiguous() # [1, 4, H, W]
@@ -404,8 +405,17 @@ class Trainer(object):
 
         # regularizations
         if not self.opt.dmtet:
+            if self.lambda_border_opacity > 0:
+                depth_border_coef = 0.125
+                brd = int(H * depth_border_coef) # Border size
+                mask = torch.ones_like(pred_weights_sum)
+                mask[..., brd:-brd, brd:-brd] = 0.0
+                loss_border_opacity = ((pred_weights_sum * mask) ** 2).mean()
+                loss = loss + self.opt.lambda_border_opacity * loss_border_opacity
+                loss_dict['loss_border_opacity'] = loss_border_opacity
+
             if self.opt.lambda_opacity > 0:
-                loss_opacity = (outputs['weights_sum'] ** 2).mean()
+                loss_opacity = (pred_weights_sum ** 2).mean()
                 loss = loss + self.opt.lambda_opacity * loss_opacity
                 loss_dict['loss_opacity'] = loss_opacity
 
@@ -436,7 +446,6 @@ class Trainer(object):
                 center_depth_mean = center_depth.mean()
                 depth_diff = torch.max(center_depth_mean - border_depth_mean, torch.tensor(1e-12).to(center_depth))
                 depth_loss = - torch.log(depth_diff)
-                depth_loss = depth_loss
                 loss = loss + self.opt.lambda_depth * depth_loss
                 loss_dict['loss_depth'] = depth_loss
 
