@@ -231,7 +231,7 @@ class VolumeRenderer(torch.nn.Module):
 
                 # Concatenate all the results along the second dimension
                 for key in results:
-                    if key in ['image', 'depth']:
+                    if key in ['image', 'depth', 'weights_sum']:
                         results[key] = torch.cat(results[key], dim=1)[0]
                     else:
                         results[key] = torch.stack(results[key], dim=0)
