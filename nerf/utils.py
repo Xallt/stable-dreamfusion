@@ -343,6 +343,12 @@ class Trainer(object):
                 self.log_ptr.flush() # write immediately to file
 
     ### ------------------------------	
+    # We consider warmup_iters to be the number of samples
+    # So when computing progress, we have to consider the batch_size
+    def get_progress(self):
+        return self.global_step * self.opt.batch_size / self.opt.iters
+    def get_warmup_progress(self):
+        return min(self.global_step * self.opt.batch_size / self.opt.warmup_iters, 1.0)
 
     def train_step(self, data):
 
@@ -354,9 +360,9 @@ class Trainer(object):
         H, W = data['H'], data['W']
 
         if hasattr(self.model, 'set_warmup_progress'):
-            self.model.set_warmup_progress(self.global_step / self.opt.warmup_iters)
+            self.model.set_warmup_progress(self.get_warmup_progress())
 
-        if self.global_step < self.opt.warmup_iters:
+        if self.get_warmup_progress() < 1.0:
             ambient_ratio = 1.0
             shading = 'normal'
             as_latent = True
@@ -379,13 +385,19 @@ class Trainer(object):
         binarize = False # if self.global_step < self.opt.iters * 0.5 else True
         
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
+        pred_image = outputs['image'].reshape(B, H, W, 3)
         pred_depth = outputs['depth'].reshape(B, 1, H, W)
         pred_weights_sum = outputs['weights_sum'].reshape(B, H, W)
 
+        # Update the model's adaptive center
+        if 'centroid' in outputs:# and self.global_step >= self.opt.warmup_iters:
+            centroid = outputs['centroid'].mean(0) # (3,)
+            self.model.center.data = centroid
+
         if as_latent:
-            pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B, H, W, 4).permute(0, 3, 1, 2).contiguous() # [1, 4, H, W]
+            pred_rgb = torch.cat([pred_image, pred_weights_sum.unsqueeze(-1)], dim=-1).permute(0, 3, 1, 2).contiguous() # [1, 4, H, W]
         else:
-            pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
+            pred_rgb = pred_image.permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
 
         # text embeddings
         if self.opt.dir_text:
@@ -405,14 +417,16 @@ class Trainer(object):
 
         # regularizations
         if not self.opt.dmtet:
-            if self.lambda_border_opacity > 0:
-                depth_border_coef = 0.125
+            if self.opt.lambda_border_opacity > 0:
+                depth_border_coef = 4 / 64
                 brd = int(H * depth_border_coef) # Border size
                 mask = torch.ones_like(pred_weights_sum)
-                mask[..., brd:-brd, brd:-brd] = 0.0
-                loss_border_opacity = ((pred_weights_sum * mask) ** 2).mean()
+                mask[:, brd:-brd, brd:-brd] = 0.0
+                loss_border_opacity = -(torch.log(torch.maximum(1 - pred_weights_sum * mask, torch.tensor(1e-12).to(mask)))).sum() / mask.sum()
                 loss = loss + self.opt.lambda_border_opacity * loss_border_opacity
                 loss_dict['loss_border_opacity'] = loss_border_opacity
+                # DEBUG
+                loss_dict['avg_border_weights_sum'] = (pred_weights_sum * mask).sum() / (mask.sum() + 1e-9)
 
             if self.opt.lambda_opacity > 0:
                 loss_opacity = (pred_weights_sum ** 2).mean()
@@ -425,7 +439,7 @@ class Trainer(object):
                 # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
                 loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
 
-                lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
+                lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.get_progress())
                         
                 loss = loss + lambda_entropy * loss_entropy
                 loss_dict['loss_entropy'] = loss_entropy
