@@ -359,8 +359,14 @@ class Trainer(object):
         B, N = rays_o.shape[:2]
         H, W = data['H'], data['W']
 
+        # Setting warmup (primarily for encoding warmup)
         if hasattr(self.model, 'set_warmup_progress'):
             self.model.set_warmup_progress(self.get_warmup_progress())
+
+        # Linear annealing of the noise intensity range
+        t_anneal_progress = min(self.get_progress() / 0.8, 1.0)
+        t_max_cur = self.opt.t_max * (1 - t_anneal_progress) + self.opt.t_max_final * t_anneal_progress
+        self.guidance.set_t_range(self.opt.t_min, t_max_cur)
 
         if self.get_warmup_progress() < 1.0:
             ambient_ratio = 1.0

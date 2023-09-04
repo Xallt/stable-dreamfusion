@@ -80,6 +80,7 @@ def parse_args(args=None):
     parser.add_argument('--angle_front', type=float, default=60, help="[0, angle_front] is the front region, [180, 180+angle_front] the back region, otherwise the side region.")
     parser.add_argument('--t_min', type=float, default=0.02, help="stable diffusion time steps min")
     parser.add_argument('--t_max', type=float, default=0.98, help="stable diffusion time steps max")
+    parser.add_argument('--t_max_final', type=float, default=0.5, help="stable diffusion time steps max (linear annealing target)")
 
     ### regularizations
     parser.add_argument('--lambda_entropy', type=float, default=1e-3, help="loss scale for alpha entropy")

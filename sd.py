@@ -99,10 +99,13 @@ class StableDiffusion(nn.Module):
         self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
 
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
-        self.min_step = int(self.num_train_timesteps * t_range[0])
-        self.max_step = int(self.num_train_timesteps * t_range[1])
+        self.set_t_range(t_range[0], t_range[1])
 
         print(f'[INFO] loaded stable diffusion!')
+
+    def set_t_range(self, t_min, t_max):
+        self.min_step = int(self.num_train_timesteps * t_min)
+        self.max_step = int(self.num_train_timesteps * t_max)
 
     def get_text_embeds(self, prompt, negative_prompt):
         # prompt, negative_prompt: [str]
