@@ -420,13 +420,18 @@ class Trainer(object):
             if self.opt.lambda_border_opacity > 0:
                 depth_border_coef = 4 / 64
                 brd = int(H * depth_border_coef) # Border size
-                mask = torch.ones_like(pred_weights_sum)
-                mask[:, brd:-brd, brd:-brd] = 0.0
-                loss_border_opacity = -(torch.log(torch.maximum(1 - pred_weights_sum * mask, torch.tensor(1e-12).to(mask)))).sum() / mask.sum()
-                loss = loss + self.opt.lambda_border_opacity * loss_border_opacity
+                border_mask = torch.ones_like(pred_weights_sum)
+                border_mask[:, brd:-brd, brd:-brd] = 0.0
+                hf_size = H // 2
+                center_mask = torch.zeros_like(pred_weights_sum)
+                center_mask[:, hf_size - brd : hf_size + brd, hf_size - brd : hf_size + brd] = 1.0
+
+                loss_border_opacity = -(torch.log(torch.maximum(1 - pred_weights_sum * border_mask, torch.tensor(1e-12).to(border_mask)))).sum() / border_mask.sum()
+                loss_center_opacity = -(torch.log(torch.maximum(pred_weights_sum * center_mask, torch.tensor(1e-12).to(center_mask)))).sum() / center_mask.sum()
+                loss = loss + self.opt.lambda_border_opacity * (loss_border_opacity + loss_center_opacity)
                 loss_dict['loss_border_opacity'] = loss_border_opacity
                 # DEBUG
-                loss_dict['avg_border_weights_sum'] = (pred_weights_sum * mask).sum() / (mask.sum() + 1e-9)
+                loss_dict['avg_border_weights_sum'] = (pred_weights_sum * border_mask).sum() / (border_mask.sum() + 1e-9)
 
             if self.opt.lambda_opacity > 0:
                 loss_opacity = (pred_weights_sum ** 2).mean()
