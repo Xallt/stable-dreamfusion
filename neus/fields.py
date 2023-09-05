@@ -104,10 +104,7 @@ class SDFNetwork(nn.Module):
             inputs_norm = torch.norm(inputs, dim=-1)
         inputs = inputs * self.scale
         if self.embed_fn_fine is not None:
-            kwargs = {}
-            if self.encoding_type == 'frequency':
-                kwargs['freq_threshold'] = self.warmup_progress
-            inputs = self.embed_fn_fine(inputs, **kwargs)
+            inputs = self.embed_fn_fine(inputs)
 
         x = inputs
         for l in range(0, self.num_layers - 1):
