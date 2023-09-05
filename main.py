@@ -85,7 +85,7 @@ def parse_args(args=None):
     ### regularizations
     parser.add_argument('--lambda_entropy', type=float, default=1e-3, help="loss scale for alpha entropy")
     parser.add_argument('--lambda_opacity', type=float, default=0, help="loss scale for alpha value")
-    parser.add_argument('--lambda_border_opacity', type=float, default=30, help="loss scale for border opacity regularization")
+    parser.add_argument('--lambda_border_opacity', type=float, default=500, help="loss scale for border opacity regularization")
     parser.add_argument('--lambda_orient', type=float, default=1e-2, help="loss scale for orientation")
     parser.add_argument('--lambda_tv', type=float, default=0, help="loss scale for total variation")
     parser.add_argument('--lambda_normal', type=float, default=0, help="loss scale for mesh normal smoothness")
