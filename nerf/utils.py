@@ -348,7 +348,7 @@ class Trainer(object):
     def get_progress(self):
         return self.global_step * self.opt.batch_size / self.opt.iters
     def get_warmup_progress(self):
-        return min(self.global_step * self.opt.batch_size / self.opt.warmup_iters, 1.0)
+        return min(self.global_step * self.opt.batch_size / (self.opt.warmup_iters + 1e-5), 1.0)
 
     def train_step(self, data):
 
