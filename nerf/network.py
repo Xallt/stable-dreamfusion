@@ -117,13 +117,14 @@ class NeRFNetwork(NeRFRenderer):
                  hidden_dim=64, # 128 in paper
                  num_layers_bg=2, # 3 in paper
                  hidden_dim_bg=32, # 64 in paper
-                 encoding='frequency_torch', # pure pytorch
+                 encoding='hashgrid', # pure pytorch
                  ):
         
         super().__init__(opt)
 
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
+        self.encoder_type = encoding
         self.encoder, self.in_dim = get_encoder(encoding, input_dim=3, multires=6)
         self.sigma_net = MLP(self.in_dim, 4, hidden_dim, num_layers, bias=True, block=ResBlock)
 
@@ -135,7 +136,6 @@ class NeRFNetwork(NeRFRenderer):
             self.hidden_dim_bg = hidden_dim_bg
             self.encoder_bg, self.in_dim_bg = get_encoder(encoding, input_dim=3, multires=4)
             self.bg_net = MLP(self.in_dim_bg, 3, hidden_dim_bg, num_layers_bg, bias=True)
-            
         else:
             self.bg_net = None
 
@@ -246,7 +246,7 @@ class NeRFNetwork(NeRFRenderer):
     def background(self, d):
 
         h = self.encoder_bg(d) # [N, C]
-        
+
         h = self.bg_net(h)
 
         # sigmoid activation for rgb
@@ -258,13 +258,16 @@ class NeRFNetwork(NeRFRenderer):
     def get_params(self, lr):
 
         params = [
-            # {'params': self.encoder.parameters(), 'lr': lr * 10},
-            {'params': self.sigma_net.parameters(), 'lr': lr},
-        ]        
+            {'params': self.sigma_net.parameters(), 'lr': lr * 100},
+        ]
+
+        if self.encoder_type == 'hashgrid':
+            params.append({'params': self.encoder.parameters(), 'lr': lr * 10})
+            
 
         if self.opt.bg_radius > 0:
             # params.append({'params': self.encoder_bg.parameters(), 'lr': lr * 10})
-            params.append({'params': self.bg_net.parameters(), 'lr': lr})
+            params.append({'params': self.bg_net.parameters(), 'lr': lr * 0.1})
         
         if self.opt.dmtet:
             params.append({'params': self.sdf, 'lr': lr})
