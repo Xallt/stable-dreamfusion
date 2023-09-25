@@ -135,10 +135,7 @@ class NeRFNetwork(NeRFRenderer):
 
         # background network
         if self.opt.bg_radius > 0:
-            self.num_layers_bg = num_layers_bg   
-            self.hidden_dim_bg = hidden_dim_bg
-            self.encoder_bg, self.in_dim_bg = get_encoder(encoding, input_dim=3, multires=4)
-            self.bg_net = MLP(self.in_dim_bg, 3, hidden_dim_bg, num_layers_bg, bias=True)
+            self.bg_net = BackgroundNetwork(4, hidden_dim_bg, num_layers_bg)
         else:
             self.bg_net = None
 
@@ -248,15 +245,7 @@ class NeRFNetwork(NeRFRenderer):
 
 
     def background(self, d):
-
-        h = self.encoder_bg(d) # [N, C]
-
-        h = self.bg_net(h)
-
-        # sigmoid activation for rgb
-        rgbs = torch.sigmoid(h)
-
-        return rgbs
+        return self.bg_net(d)
 
     # optimizer utils
     def get_params(self, lr):
