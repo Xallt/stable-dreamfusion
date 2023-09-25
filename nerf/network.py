@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from activation import trunc_exp
 from .renderer import NeRFRenderer
+from neus.embedder import get_embedder
 
 import numpy as np
 from encoding import get_encoder
@@ -84,6 +85,29 @@ class MLP(nn.Module):
             x = self.net[l](x)
             
         return x
+class BackgroundNetwork(torch.nn.Module):
+    def __init__(self, multires, hidden_dim_bg, num_layers_bg):
+        super().__init__()
+        self.encoder_bg, self.in_dim_bg = get_embedder(multires, input_dims=3, include_input=False)
+        self.bg_net = MLP(
+            self.in_dim_bg, 3, 
+            hidden_dim_bg, 
+            num_layers_bg, 
+            bias=True
+        )
+        # Initialize background color to be black
+        for block in self.bg_net.net:
+            if not isinstance(block, torch.nn.Linear):
+                torch.nn.init.normal_(block.dense.weight, 0.0, 0.02)
+                torch.nn.init.constant_(block.dense.bias, 0.0)
+            else:
+                torch.nn.init.normal_(block.weight, 0.0, 0.02)
+                torch.nn.init.constant_(block.bias, -2.0)
+    def forward(self, dirs):
+        h = self.encoder_bg(dirs)
+        h = self.bg_net(h)
+        rgbs = torch.sigmoid(h)
+        return rgbs
 
 
 class NeRFNetwork(NeRFRenderer):
