@@ -111,11 +111,7 @@ def parse_args(args=None):
 
     return opt
 
-
-if __name__ == '__main__':
-
-    opt = parse_args()
-
+def main(opt):
     opt.t_range = [opt.t_min, opt.t_max]
 
     if opt.O:
@@ -258,3 +254,9 @@ if __name__ == '__main__':
                     trainer.train(train_loader, valid_loader, max_epoch)
             else:
                 trainer.train(train_loader, valid_loader, max_epoch)
+
+if __name__ == '__main__':
+
+    opt = parse_args()
+
+    main(opt)
