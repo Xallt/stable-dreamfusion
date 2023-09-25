@@ -104,6 +104,8 @@ def parse_args(args=None):
     parser.add_argument('--light_phi', type=float, default=0, help="default GUI light direction in [0, 360), azimuth")
     parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
 
+    parser.add_argument('--debug', action='store_true', help="debug mode")
+
     opt = parser.parse_args(args)
 
     return opt
@@ -249,4 +251,8 @@ if __name__ == '__main__':
             valid_loader = NeRFDataset(opt, device=device, type='val', H=opt.H, W=opt.W, size=5).dataloader()
 
             max_epoch = np.ceil(opt.iters / train_size).astype(np.int32)
-            trainer.train(train_loader, valid_loader, max_epoch)
+            if opt.debug:
+                with torch.autograd.detect_anomaly():
+                    trainer.train(train_loader, valid_loader, max_epoch)
+            else:
+                trainer.train(train_loader, valid_loader, max_epoch)
