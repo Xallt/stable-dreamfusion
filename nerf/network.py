@@ -258,7 +258,7 @@ class NeRFNetwork(NeRFRenderer):
     def get_params(self, lr):
 
         params = [
-            {'params': self.sigma_net.parameters(), 'lr': lr * 100},
+            {'params': self.sigma_net.parameters(), 'lr': lr},
         ]
 
         if self.encoder_type == 'hashgrid':
