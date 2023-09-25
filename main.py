@@ -54,8 +54,8 @@ def parse_args(args=None):
     parser.add_argument('--bg_radius', type=float, default=1.4, help="if positive, use a background model at sphere(bg_radius)")
     parser.add_argument('--density_activation', type=str, default='softplus', choices=['softplus', 'exp'], help="density activation function")
     parser.add_argument('--density_thresh', type=float, default=0.1, help="threshold for density grid to be occupied")
-    parser.add_argument('--blob_density', type=float, default=10, help="max (center) density for the density blob")
-    parser.add_argument('--blob_radius', type=float, default=0.5, help="control the radius for the density blob")
+    parser.add_argument('--blob_density', type=float, default=1, help="max (center) density for the density blob")
+    parser.add_argument('--blob_radius', type=float, default=0.4, help="control the radius for the density blob")
     # network backbone
     parser.add_argument('--backbone', type=str, default='grid', choices=['grid', 'vanilla', 'grid_taichi'], help="nerf backbone")
     parser.add_argument('--optim', type=str, default='adan', choices=['adan', 'adam'], help="optimizer")
