@@ -69,7 +69,7 @@ class MLP(nn.Module):
 
         net = []
         for l in range(num_layers):
-            if l == 0:
+            if l == 0 and num_layers != 1:
                 net.append(BasicBlock(self.dim_in, self.dim_hidden, bias=bias))
             elif l != num_layers - 1:
                 net.append(block(self.dim_hidden, self.dim_hidden, bias=bias))
