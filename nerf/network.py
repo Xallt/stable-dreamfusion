@@ -67,14 +67,16 @@ class MLP(nn.Module):
         self.dim_hidden = dim_hidden
         self.num_layers = num_layers
 
+        dims = [self.dim_in] + [self.dim_hidden] * (self.num_layers - 1) + [self.dim_out]
+
         net = []
         for l in range(num_layers):
             if l == 0 and num_layers != 1:
-                net.append(BasicBlock(self.dim_in, self.dim_hidden, bias=bias))
+                net.append(BasicBlock(dims[l], dims[l + 1], bias=bias))
             elif l != num_layers - 1:
-                net.append(block(self.dim_hidden, self.dim_hidden, bias=bias))
+                net.append(block(dims[l], dims[l + 1], bias=bias))
             else:
-                net.append(nn.Linear(self.dim_hidden, self.dim_out, bias=bias))
+                net.append(nn.Linear(dims[l], dims[l + 1], bias=bias))
 
         self.net = nn.ModuleList(net)
         
@@ -126,7 +128,8 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim = hidden_dim
         self.encoder_type = encoding
         self.encoder, self.in_dim = get_encoder(encoding, input_dim=3, multires=6)
-        self.sigma_net = MLP(self.in_dim, 4, hidden_dim, num_layers, bias=True, block=ResBlock)
+        self.sigma_net = MLP(self.in_dim, 1 + hidden_dim, hidden_dim, num_layers, bias=True, block=ResBlock)
+        self.color_net = MLP(self.in_dim + hidden_dim, 3, hidden_dim, 1, bias=True, block=ResBlock)
 
         self.density_activation = trunc_exp if self.opt.density_activation == 'exp' else F.softplus
 
@@ -157,7 +160,8 @@ class NeRFNetwork(NeRFRenderer):
         h = self.sigma_net(enc)
 
         sigma = self.density_activation(h[..., 0] + self.density_blob(x))
-        albedo = torch.sigmoid(h[..., 1:])
+        albedo = self.color_net(torch.cat((enc, h[..., 1:]), dim=-1))
+        albedo = torch.sigmoid(albedo)
 
         return sigma, albedo
     
@@ -259,6 +263,7 @@ class NeRFNetwork(NeRFRenderer):
 
         params = [
             {'params': self.sigma_net.parameters(), 'lr': lr},
+            {'params': self.color_net.parameters(), 'lr': lr},
         ]
 
         if self.encoder_type == 'hashgrid':
