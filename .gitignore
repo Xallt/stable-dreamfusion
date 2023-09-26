@@ -6,6 +6,7 @@ build/
 tmp*
 data/
 trial*/
+exp_trials/
 .vs/
 
 TOKEN
